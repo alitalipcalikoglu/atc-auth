@@ -175,3 +175,16 @@ test('forgot-password inside the cooldown is a silent no-op, not an error', asyn
   await t.service.forgotPassword('f@example.com', ctx); // silent: inside the cooldown
   assert.equal(t.mailer.sent.length, before + 1, 'only the first request sends a mail');
 });
+
+test('events: user lifecycle is published with ids only, never e-mail addresses', async () => {
+  /** @type {[string, any][]} */ const out = [];
+  const t = await testAuthService({}, { publish: (/** @type {string} */ type, /** @type {any} */ data) => out.push([type, data]) });
+  const { user } = await t.service.register({ email: 'ev@example.com', password: GOOD_PASSWORD }, ctx);
+  t.service.updateUser(user.id, { name: 'No status change' }, ctx);
+  t.service.updateUser(user.id, { status: 'disabled' }, ctx);
+  t.service.updateUser(user.id, { status: 'disabled' }, ctx);
+  t.service.updateUser(user.id, { status: 'active' }, ctx);
+  t.service.deleteUser(user.id, ctx);
+  assert.deepEqual(out.map(([type]) => type), ['auth.user.created', 'auth.user.disabled', 'auth.user.enabled', 'auth.user.deleted']);
+  assert.ok(out.every(([, d]) => Object.keys(d).join() === 'id' && d.id === user.id));
+});

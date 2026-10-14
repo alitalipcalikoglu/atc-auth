@@ -49,11 +49,13 @@ export class AuthApi {
    * @param {import('../store/session-store.js').SessionStore} deps.sessions
    * @param {import('../store/event-store.js').EventStore} deps.events
    * @param {string} deps.version
+   * @param {import('../events/event-publisher.js').EventPublisher} [deps.publisher]
    * @param {Parameters<typeof AuditMetrics.lines>[0]} [deps.audit] Audit forwarding state, for /metrics.
    * @param {import('../types.js').Logger} [deps.logger]
    */
-  constructor({ config, service, jwt, db, mailer, users, sessions, events, version, audit, logger }) {
+  constructor({ config, service, jwt, db, mailer, users, sessions, events, publisher, version, audit, logger }) {
     this.audit = audit;
+    this.publisher = publisher ?? null;
     this.config = config;
     this.service = service;
     this.jwt = jwt;
@@ -287,6 +289,7 @@ export class AuthApi {
         '# TYPE auth_sessions_active gauge',
         `auth_sessions_active ${this.sessions.countActive()}`,
         ...AuditMetrics.lines(this.audit),
+        ...(this.publisher?.metricLines() ?? []),
         '# HELP auth_process_uptime_seconds Process uptime.',
         '# TYPE auth_process_uptime_seconds gauge',
         `auth_process_uptime_seconds ${process.uptime().toFixed(0)}`,

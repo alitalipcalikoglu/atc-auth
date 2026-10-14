@@ -15,6 +15,7 @@ import { ActionTokenStore } from './store/action-token-store.js';
 import { EventStore } from './store/event-store.js';
 import { SessionStore } from './store/session-store.js';
 import { UserStore } from './store/user-store.js';
+import { EventPublisher } from './events/event-publisher.js';
 
 /**
  * Composition root: wires configuration, storage, crypto, domain, HTTP and maintenance,
@@ -41,6 +42,7 @@ export class Application {
         purge: () => this.events.outboxPurge(config.auditOutboxRetentionDays),
       },
     });
+    this.publisher = new EventPublisher({ source: 'atc-auth', target: config.webhookOut });
     this.jwt = JwtSigner.fromFiles({
       privateKeyPath: config.jwtPrivateKeyPath,
       previousPublicKeyPath: config.jwtPreviousPublicKeyPath,
@@ -74,7 +76,7 @@ export class Application {
     const { config } = this;
     await this.jwt.init();
     const service = new AuthService({
-      db: this.db, users: this.users, sessions: this.sessions, tokens: this.tokens, events: this.events,
+      db: this.db, users: this.users, sessions: this.sessions, tokens: this.tokens, events: this.events, publisher: this.publisher,
       hasher: new PasswordHasher({ logN: config.scryptLogN }),
       policy: new PasswordPolicy({ minLength: config.passwordMinLength }),
       jwt: this.jwt, mailer: this.mailer, log: /** @type {any} */ (console),
@@ -91,7 +93,7 @@ export class Application {
       },
     });
     const { audit, events } = this;
-    const api = new AuthApi({ config, service, jwt: this.jwt, db: this.db, mailer: this.mailer, users: this.users, sessions: this.sessions, events: this.events, version: this.version, audit: { get enabled() { return audit.enabled; }, get stats() { return audit.stats; }, get backlog() { return events.outboxPending(1000).length; } } });
+    const api = new AuthApi({ config, service, jwt: this.jwt, db: this.db, mailer: this.mailer, users: this.users, sessions: this.sessions, events: this.events, publisher: this.publisher, version: this.version, audit: { get enabled() { return audit.enabled; }, get stats() { return audit.stats; }, get backlog() { return events.outboxPending(1000).length; } } });
     const app = await api.build();
     this.app = app;
     service.log = app.log.child({ component: 'atc-auth' });
@@ -102,12 +104,14 @@ export class Application {
       steps: [
         () => this.maintenance?.stop(),
         () => this.app?.close(),
+        () => this.publisher.close(),
         () => this.audit.close(),
         () => this.db.close(),
       ],
     });
     this.shutdown = shutdown;
     this.audit.logger = app.log;
+    this.publisher.logger = app.log;
     this.audit.start();
     await app.listen({ port: config.port, host: config.host });
     app.log.info({ tls: config.tls !== null, kid: this.jwt.kid, issuer: config.jwtIssuer }, config.tls ? 'serving HTTPS' : 'serving plain HTTP, terminate TLS at a reverse proxy');

@@ -19,6 +19,7 @@
  * @property {boolean} trustProxy
  * @property {{ certPath: string, keyPath: string }|null} tls
  * @property {{ url: string, apiKey: string }|null} audit   Audit service to forward events to; null = off.
+ * @property {{ url: string, apiKey: string, timeoutMs: number }|null} webhookOut  atc-webhook-out target for events; null = off.
  * @property {number} bodyLimit
  * @property {string} dbPath
  * @property {string} [dbBackupDir]

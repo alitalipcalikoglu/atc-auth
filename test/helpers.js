@@ -103,8 +103,9 @@ export class FakeMailer {
 /**
  * Fully wired AuthService on an in-memory database with a fake mailer and controllable clock.
  * @param {Record<string, string>} [envOverrides]
+ * @param {any} [publisher]
  */
-export async function testAuthService(envOverrides = {}) {
+export async function testAuthService(envOverrides = {}, publisher = undefined) {
   const { AuthService } = await import('../src/domain/auth-service.js');
   const { PasswordPolicy } = await import('../src/domain/password-policy.js');
   const { PasswordHasher } = await import('../src/crypto/password.js');
@@ -122,7 +123,7 @@ export async function testAuthService(envOverrides = {}) {
   const tokens = new ActionTokenStore(db);
   const events = new EventStore(db, AuditEvents.fromSecurityEvent);
   const service = new AuthService({
-    db, users, sessions, tokens, events,
+    db, users, sessions, tokens, events, publisher,
     hasher: new PasswordHasher({ logN: config.scryptLogN }),
     policy: new PasswordPolicy({ minLength: config.passwordMinLength }),
     jwt: signer, mailer, log: silentLog,

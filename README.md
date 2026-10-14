@@ -139,6 +139,10 @@ Class-based; dependencies are injected through constructors, `src/application.js
 - Multi-tenant user pools: one deployment serves one user pool. Run another instance for another product.
 - Multiple processes on one SQLite file: intended deployment is one instance per database.
 
+## Events
+
+With `WEBHOOK_OUT_URL` set, the service publishes `auth.user.created`, `auth.user.disabled`, `auth.user.enabled` and `auth.user.deleted` with the user id only (no e-mail address). Best effort; see [examples/events.md](examples/events.md).
+
 ## Audit events
 
 With `AUDIT_URL` and `AUDIT_API_KEY` set, every security event this service records per user (registration, verification, login success and failure with the reason, lockout, refresh, logout, session revocation, password reset and change, account disable/enable/delete) is also forwarded to the audit service as `auth.<event type>` with the user as actor and target, the client IP and the event's metadata. Attempts that did not succeed carry `outcome: "failure"`. Details: [examples/audit-events.md](examples/audit-events.md).
@@ -161,6 +165,8 @@ trace-id is continued with a fresh span-id for this hop, both logged as `traceId
 no other outbound call does. The security events this service forwards to
 audit do not yet carry a request id of their own — only auth's own log line for the causing request
 does. See [OBSERVABILITY.md](../atc-stack/docs/OBSERVABILITY.md).
+
+Event publishing is observable as `events_publish_enabled`, `events_publish_total{result="published|sent|dropped|failed"}` and `events_publish_pending`.
 
 Audit forwarding is observable too: `audit_forward_enabled`, `audit_forward_events_total{result="recorded|sent|dropped|failed"}` and `audit_forward_pending`. A rising `dropped`, or a `pending` that does not drain, means audit events are being lost or delayed; alert on it.
 

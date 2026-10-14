@@ -13,6 +13,7 @@ Scenario-driven walkthroughs of every feature. Requests to `/v1/*` need `Authori
 | [User administration](user-administration.md) | List, look up, disable, delete users; sessions; audit log |
 | [Signing key rotation](key-rotation.md) | Rotate the ES256 key pair without logging anyone out |
 | [Operations](operations.md) | Health, readiness, metrics, environment, PM2, Docker |
+| [Events](events.md) | `auth.user.*` lifecycle events through atc-webhook-out |
 | [Audit events](audit-events.md) | Which security events are forwarded to the audit service and how |
 
 Set up once for the examples:

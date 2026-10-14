@@ -24,3 +24,9 @@ test('rejects malformed values', () => {
   ];
   for (const o of bad) assert.throws(() => Config.fromEnv({ ...fullEnv(), ...o }), ConfigError, JSON.stringify(o));
 });
+
+test('Config: WEBHOOK_OUT_URL and WEBHOOK_OUT_API_KEY come together', () => {
+  assert.equal(testConfig().webhookOut, null);
+  assert.equal(testConfig({ WEBHOOK_OUT_URL: 'http://h:3009/', WEBHOOK_OUT_API_KEY: 'k' }).webhookOut?.url, 'http://h:3009');
+  assert.throws(() => testConfig({ WEBHOOK_OUT_URL: 'http://h' }), ConfigError);
+});

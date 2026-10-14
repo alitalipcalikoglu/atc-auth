@@ -59,14 +59,16 @@ export class AuthService {
    * @param {Mailer} deps.mailer
    * @param {Logger} deps.log
    * @param {AuthServiceOptions} deps.options
+   * @param {{ publish: (type: string, data?: unknown) => boolean }} [deps.publisher]  Domain events for webhook-out; ids only, no personal data.
    * @param {() => number} [deps.now]
    */
-  constructor({ db, users, sessions, tokens, events, hasher, policy, jwt, mailer, log, options, now = Date.now }) {
+  constructor({ db, users, sessions, tokens, events, hasher, policy, jwt, mailer, log, options, publisher, now = Date.now }) {
     this.db = db;
     this.users = users;
     this.sessions = sessions;
     this.tokens = tokens;
     this.events = events;
+    this.publisher = publisher ?? { publish: () => false };
     this.hasher = hasher;
     this.policy = policy;
     this.jwt = jwt;
@@ -100,6 +102,7 @@ export class AuthService {
       this.events.record({ userId: u.id, type: 'user.registered', ip: ctx.ip }, now);
       return u;
     });
+    this.publisher.publish('auth.user.created', { id: user.id });
     const verificationEmailSent = await this.#sendVerification(user);
     return { user, verificationEmailSent };
   }
@@ -383,6 +386,7 @@ export class AuthService {
   updateUser(userId, patch, ctx) {
     const user = this.#requireUser(userId);
     const now = this.now();
+    const statusChanged = patch.status !== undefined && patch.status !== user.status;
     this.db.transaction(() => {
       if (patch.name !== undefined) this.users.setName(userId, patch.name, now);
       if (patch.status !== undefined && patch.status !== user.status) {
@@ -391,6 +395,7 @@ export class AuthService {
         this.events.record({ userId, type: patch.status === 'disabled' ? 'account.disabled' : 'account.enabled', ip: ctx.ip }, now);
       }
     });
+    if (statusChanged) this.publisher.publish(patch.status === 'disabled' ? 'auth.user.disabled' : 'auth.user.enabled', { id: userId });
     return this.#requireUser(userId);
   }
 
@@ -404,6 +409,7 @@ export class AuthService {
       this.users.remove(userId);
       this.events.record({ userId, type: 'account.deleted', ip: ctx.ip }, this.now());
     });
+    this.publisher.publish('auth.user.deleted', { id: userId });
   }
 
   // ---------------------------------------------------------------- internals
