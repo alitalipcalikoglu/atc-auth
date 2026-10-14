@@ -113,7 +113,7 @@ started. Both `traceId`/`spanId` are logged on every request line. Its own call 
 **not** carry a request id — `EventStore`'s per-user security-event schema has no such column today
 (`src/store/event-store.js`), so correlating a forwarded audit event back to the specific inbound
 HTTP request that caused it is not yet possible; only auth's own log line for that request carries
-the id. See `atc-stack/docs/ARCHITECTURE_AUDIT.md` §4.4 for the outbox work this is adjacent to.
+the id.
 
 ## Security model
 
