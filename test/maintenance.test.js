@@ -26,8 +26,8 @@ test('Maintenance purges expired sessions, spent tokens and old events', () => {
   events.record({ userId: u.id, type: 'new' }, now);
 
   const m = new Maintenance({ sessions, tokens, events, log: silentLog, options: { eventRetentionDays: 90 } });
-  assert.deepEqual(m.run(now), { sessions: 1, tokens: 1, events: 1 });
-  assert.deepEqual(m.run(now), { sessions: 0, tokens: 0, events: 0 });
+  assert.deepEqual(m.run(now), { sessions: 1, tokens: 1, guard: 0, events: 1 });
+  assert.deepEqual(m.run(now), { sessions: 0, tokens: 0, guard: 0, events: 0 });
   m.start();
   m.stop();
 });

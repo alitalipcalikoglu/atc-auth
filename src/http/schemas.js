@@ -44,8 +44,9 @@ export class Schemas {
   static emailOnly = Schemas.body(['email'], { email: Schemas.email });
   static resetPassword = Schemas.body(['token', 'password'], { token: Schemas.opaqueToken, password: Schemas.password });
   static changePassword = Schemas.body(['currentPassword', 'newPassword'], { currentPassword: Schemas.password, newPassword: Schemas.password });
+  static changeEmail = Schemas.body(['email', 'password', 'newEmail'], { email: Schemas.email, password: Schemas.password, newEmail: Schemas.email });
   static patchUser = {
     type: 'object', additionalProperties: false, minProperties: 1,
-    properties: { name: Schemas.name, status: { type: 'string', enum: ['active', 'disabled'] } },
+    properties: { name: Schemas.name, email: Schemas.email, status: { type: 'string', enum: ['active', 'disabled'] } },
   };
 }

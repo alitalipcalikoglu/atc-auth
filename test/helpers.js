@@ -66,10 +66,12 @@ export const silentLog = /** @type {any} */ (new Proxy({}, {
 /** Recording {@link Mailer}; set `fail` to make sends throw. */
 export class FakeMailer {
   constructor() {
-    /** @type {{ kind: 'verify'|'reset', to: string, url: string, token: string, name: string|null }[]} */
+    /** @type {{ kind: 'verify'|'reset'|'change', to: string, url: string, token: string, name: string|null }[]} */
     this.sent = [];
     /** @type {Error|null} */
     this.fail = null;
+    /** @type {{ to: string, kind: string, details: Record<string, string> }[]} */
+    this.notices = [];
   }
 
   /** @param {{ to: string, name: string|null, url: string }} m */
@@ -82,10 +84,20 @@ export class FakeMailer {
     this.#push('reset', m);
   }
 
+  /** @param {{ to: string, name: string|null, url: string }} m */
+  async sendEmailChange(m) {
+    this.#push('change', m);
+  }
+
+  /** @param {{ to: string, name: string|null, kind: string, details: Record<string, string> }} m */
+  async sendNotice(m) {
+    this.notices.push(m);
+  }
+
   async verify() {}
 
   /**
-   * @param {'verify'|'reset'} kind
+   * @param {'verify'|'reset'|'change'} kind
    * @param {{ to: string, name: string|null, url: string }} m
    */
   #push(kind, m) {
@@ -95,7 +107,7 @@ export class FakeMailer {
   }
 
   /** Last token of a kind, for tests that follow the emailed link. */
-  lastToken(/** @type {'verify'|'reset'} */ kind) {
+  lastToken(/** @type {'verify'|'reset'|'change'} */ kind) {
     return this.sent.filter((s) => s.kind === kind).at(-1)?.token ?? '';
   }
 }
@@ -113,6 +125,7 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
   const { SessionStore } = await import('../src/store/session-store.js');
   const { ActionTokenStore } = await import('../src/store/action-token-store.js');
   const { EventStore } = await import('../src/store/event-store.js');
+  const { GuardStore } = await import('../src/store/guard-store.js');
   const config = testConfig(envOverrides);
   const db = testDb();
   const { signer } = await testSigner({ ttlSec: config.accessTokenTtlSec });
@@ -122,8 +135,9 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
   const sessions = new SessionStore(db);
   const tokens = new ActionTokenStore(db);
   const events = new EventStore(db, AuditEvents.fromSecurityEvent);
+  const guard = new GuardStore(db);
   const service = new AuthService({
-    db, users, sessions, tokens, events, publisher,
+    db, users, sessions, tokens, events, guard, publisher,
     hasher: new PasswordHasher({ logN: config.scryptLogN }),
     policy: new PasswordPolicy({ minLength: config.passwordMinLength }),
     jwt: signer, mailer, log: silentLog,
@@ -132,6 +146,10 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
       verifyTtlMs: config.verifyTokenTtlMin * 60_000,
       resetTtlMs: config.resetTokenTtlMin * 60_000,
       loginMaxFailures: config.loginMaxFailures,
+      loginMaxFailuresTotal: config.loginMaxFailuresTotal,
+      maxSessions: config.maxSessions,
+      newDeviceEmail: config.newDeviceEmail,
+      changeEmailUrlTemplate: config.changeEmailUrlTemplate,
       lockoutMs: config.loginLockoutMin * 60_000,
       loginRequiresVerifiedEmail: config.loginRequiresVerifiedEmail,
       resendCooldownMs: config.resendCooldownSec * 1000,
@@ -140,7 +158,7 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
     },
     now: () => clock.now,
   });
-  return { service, config, db, signer, mailer, clock, users, sessions, tokens, events };
+  return { service, config, db, signer, mailer, clock, users, sessions, tokens, events, guard };
 }
 
 export const ctx = { ip: '203.0.113.9', userAgent: 'test-agent' };

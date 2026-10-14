@@ -13,6 +13,7 @@ export class AuthError extends Error {
     FORBIDDEN: 403,
     INVALID_TOKEN: 401,
     TOKEN_REUSED: 401,
+    INVALID_ARGUMENT: 400,
     USER_NOT_FOUND: 404,
     SESSION_NOT_FOUND: 404,
   };

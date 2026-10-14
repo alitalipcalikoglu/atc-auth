@@ -8,7 +8,7 @@ import { Database } from '../src/db.js';
 test('Database applies migrations once and enforces foreign keys', () => {
   const db = new Database(':memory:');
   const tables = /** @type {{ name: string }[]} */ (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()).map((r) => r.name);
-  assert.deepEqual(tables, ['action_tokens', 'events', 'outbox', 'schema_migrations', 'sessions', 'users']);
+  assert.deepEqual(tables, ['action_tokens', 'events', 'known_devices', 'login_failures', 'outbox', 'schema_migrations', 'sessions', 'users']);
   assert.equal(/** @type {{ user_version: number }} */ (db.prepare('PRAGMA user_version').get()).user_version, Database.MIGRATIONS.length);
   assert.throws(() => db.prepare("INSERT INTO sessions (id,user_id,token_hash,created_at,last_used_at,expires_at) VALUES ('s','missing','h',0,0,0)").run(), /FOREIGN KEY/);
   db.ping();
@@ -36,8 +36,8 @@ test('Stage 4 migration v1 -> v2: an existing pre-outbox database gains the outb
     v1.prepare("INSERT INTO events (type, at) VALUES ('pre-upgrade', 0)").run();
     v1.close();
 
-    const v2 = new Database(path); // this checkout's real MIGRATIONS: v1 schema + v2 outbox
-    assert.equal(v2.schemaVersion, 2);
+    const v2 = new Database(path); // this checkout's real MIGRATIONS: v1 schema + v2 outbox + v3 guards
+    assert.equal(v2.schemaVersion, 3);
     assert.equal(/** @type {any} */ (v2.prepare("SELECT email FROM users WHERE id = 'u1'").get()).email, 'a@b.co', 'v1 data survived the upgrade');
     assert.equal(/** @type {any} */ (v2.prepare("SELECT COUNT(*) n FROM events").get()).n, 1);
     assert.equal(/** @type {any} */ (v2.prepare("SELECT COUNT(*) n FROM outbox").get()).n, 0, 'outbox table exists, empty (no historical events retrofitted into it)');

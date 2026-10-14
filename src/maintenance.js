@@ -14,8 +14,10 @@ export class Maintenance {
    * @param {import('./store/event-store.js').EventStore} deps.events
    * @param {import('./types.js').Logger} deps.log
    * @param {{ eventRetentionDays: number }} deps.options
+   * @param {import('./store/guard-store.js').GuardStore} [deps.guard]
    */
-  constructor({ sessions, tokens, events, log, options }) {
+  constructor({ sessions, tokens, events, log, options, guard }) {
+    this.guard = guard;
     this.sessions = sessions;
     this.tokens = tokens;
     this.events = events;
@@ -43,9 +45,10 @@ export class Maintenance {
       const result = {
         sessions: this.sessions.purge(now, now - Maintenance.REVOKED_SESSION_KEEP_MS),
         tokens: this.tokens.purge(now, now - Maintenance.USED_TOKEN_KEEP_MS),
+        guard: this.guard?.purge(now) ?? 0,
         events: this.events.purge(now - this.options.eventRetentionDays * 86_400_000),
       };
-      if (result.sessions || result.tokens || result.events) this.log.info(result, 'maintenance purged rows');
+      if (result.sessions || result.tokens || result.events || result.guard) this.log.info(result, 'maintenance purged rows');
       return result;
     } catch (err) {
       this.log.error({ err }, 'maintenance failed');

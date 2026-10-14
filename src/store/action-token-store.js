@@ -6,13 +6,13 @@ import { OpaqueToken } from '../crypto/opaque-token.js';
 
 /** Single-use, expiring tokens for email verification and password reset. */
 export class ActionTokenStore {
-  static COLUMNS = 'token_hash, user_id, purpose, expires_at, used_at, created_at';
+  static COLUMNS = 'token_hash, user_id, purpose, payload, expires_at, used_at, created_at';
 
   /** @param {Database} db */
   constructor(db) {
     const C = ActionTokenStore.COLUMNS;
     this.stmt = {
-      insert: db.prepare(`INSERT INTO action_tokens (token_hash, user_id, purpose, expires_at, created_at) VALUES (?, ?, ?, ?, ?)`),
+      insert: db.prepare(`INSERT INTO action_tokens (token_hash, user_id, purpose, payload, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
       byHash: db.prepare(`SELECT ${C} FROM action_tokens WHERE token_hash = ? AND purpose = ?`),
       live: db.prepare(`SELECT ${C} FROM action_tokens WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?`),
       consume: db.prepare(`UPDATE action_tokens SET used_at = ? WHERE token_hash = ? AND purpose = ? AND used_at IS NULL AND expires_at > ?`),
@@ -24,15 +24,20 @@ export class ActionTokenStore {
 
   /**
    * Issue a token, invalidating any earlier unused token of the same purpose for the user.
-   * @param {{ userId: string, purpose: TokenPurpose, ttlMs: number }} input
+   * @param {{ userId: string, purpose: TokenPurpose, ttlMs: number, payload?: string|null }} input
    * @param {number} [now]
    * @returns {string} plaintext token
    */
-  issue({ userId, purpose, ttlMs }, now = Date.now()) {
+  issue({ userId, purpose, ttlMs, payload = null }, now = Date.now()) {
     this.stmt.invalidate.run(now, userId, purpose);
     const { token, hash } = OpaqueToken.generate();
-    this.stmt.insert.run(hash, userId, purpose, now + ttlMs, now);
+    this.stmt.insert.run(hash, userId, purpose, payload, now + ttlMs, now);
     return token;
+  }
+
+  /** Spend every unused token of a purpose for a user. @param {string} userId @param {TokenPurpose} purpose @param {number} [now] */
+  invalidate(userId, purpose, now = Date.now()) {
+    this.stmt.invalidate.run(now, userId, purpose);
   }
 
   /**

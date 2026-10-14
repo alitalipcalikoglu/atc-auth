@@ -45,3 +45,11 @@ Passwords are NFKC-normalised before hashing, so `ﬁsh` and `fish` are the same
 ## Hash cost
 
 scrypt with `N = 2^SCRYPT_LOG_N` (default 15, about 100 ms per check). Raising the value later is safe: existing users are re-hashed transparently on their next successful login.
+
+## Lockout is per address, with backoff
+
+Failures count per account **and client address** (the address the calling backend forwards as `X-Client-IP`). After `LOGIN_MAX_FAILURES` the address is locked for `LOGIN_LOCKOUT_MIN`; every repeat of the same address doubles the lock, up to a day. The owner signing in from another address is not affected, so a stranger who knows an email cannot lock it out for everyone. `LOGIN_MAX_FAILURES_TOTAL` (default 50) counts across all addresses and locks the account itself against a distributed attack. A successful sign-in clears the address's counter. `423 ACCOUNT_LOCKED` carries `Retry-After`.
+
+## Session cap and new-device notice
+
+`MAX_SESSIONS` (default 10) limits active sessions per user; a new sign-in beyond it signs out the least recently used one (event `session.revoked`, reason `session_limit`). With `NEW_DEVICE_EMAIL=true` a sign-in from a user agent not seen before mails the user (event `login.new_device`); the very first device is not announced.

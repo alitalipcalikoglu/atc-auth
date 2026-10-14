@@ -35,7 +35,11 @@
  * @property {number} resetTokenTtlMin
  * @property {number} passwordMinLength
  * @property {number} scryptLogN
- * @property {number} loginMaxFailures
+ * @property {number} loginMaxFailures        Failed sign-ins from one address for one account before that address is locked out.
+ * @property {string} changeEmailUrlTemplate  Link in the confirmation mail for a new address; defaults to VERIFY_URL_TEMPLATE.
+ * @property {number} loginMaxFailuresTotal   Failed sign-ins for one account from every address together before the account is locked.
+ * @property {number} maxSessions             Active sessions per user; the oldest is revoked on the next sign-in. 0 = unlimited.
+ * @property {boolean} newDeviceEmail         Mail the user when a sign-in comes from a device not seen before.
  * @property {number} loginLockoutMin
  * @property {boolean} loginRequiresVerifiedEmail
  * @property {number} resendCooldownSec
@@ -84,13 +88,14 @@
  * @property {string|null} user_agent
  */
 
-/** @typedef {'verify_email'|'reset_password'} TokenPurpose */
+/** @typedef {'verify_email'|'reset_password'|'change_email'} TokenPurpose */
 
 /**
  * @typedef {object} ActionTokenRow
  * @property {string} token_hash
  * @property {string} user_id
  * @property {TokenPurpose} purpose
+ * @property {string|null} payload  change_email: the new address.
  * @property {number} expires_at
  * @property {number|null} used_at
  * @property {number} created_at

@@ -72,5 +72,43 @@ export class Database extends CoreDatabase {
     CREATE INDEX outbox_pending ON outbox (at) WHERE sent_at IS NULL;
     CREATE INDEX outbox_sent ON outbox (sent_at) WHERE sent_at IS NOT NULL;
     `,
+    `
+    -- Email change (a token carries the new address), lockouts per account AND client address with
+    -- exponential backoff, sign-in devices for the "new sign-in" notice.
+    CREATE TABLE action_tokens_v2 (
+      token_hash  TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      purpose     TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password', 'change_email')),
+      payload     TEXT,
+      expires_at  INTEGER NOT NULL,
+      used_at     INTEGER,
+      created_at  INTEGER NOT NULL
+    );
+    INSERT INTO action_tokens_v2 (token_hash, user_id, purpose, expires_at, used_at, created_at)
+      SELECT token_hash, user_id, purpose, expires_at, used_at, created_at FROM action_tokens;
+    DROP TABLE action_tokens;
+    ALTER TABLE action_tokens_v2 RENAME TO action_tokens;
+    CREATE INDEX action_tokens_user ON action_tokens (user_id, purpose);
+    CREATE INDEX action_tokens_expiry ON action_tokens (expires_at);
+
+    CREATE TABLE login_failures (
+      user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      ip           TEXT NOT NULL,
+      failures     INTEGER NOT NULL DEFAULT 0,
+      lockouts     INTEGER NOT NULL DEFAULT 0,
+      locked_until INTEGER,
+      last_at      INTEGER NOT NULL,
+      PRIMARY KEY (user_id, ip)
+    );
+    CREATE INDEX login_failures_last ON login_failures (last_at);
+
+    CREATE TABLE known_devices (
+      user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device    TEXT NOT NULL,
+      first_at  INTEGER NOT NULL,
+      last_at   INTEGER NOT NULL,
+      PRIMARY KEY (user_id, device)
+    );
+    `,
   ];
 }

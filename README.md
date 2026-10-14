@@ -60,7 +60,9 @@ Errors are JSON: `{ "error": { "code", "message", "details?" } }`. `423` and `42
 | GET | `/.well-known/jwks.json` | Public keys for local JWT verification. No auth. |
 | POST | `/v1/users` | Register `{ email, password, name? }`. `201` with `user` and `verificationEmailSent`. |
 | GET | `/v1/users` | List (`limit`, `cursor`) or look up `?email=`. |
-| GET / PATCH / DELETE | `/v1/users/:id` | Read; update `{ name?, status? }` (disabling revokes sessions); hard delete. |
+| GET / PATCH / DELETE | `/v1/users/:id` | Read; update `{ name?, email?, status? }` (disabling revokes sessions; a new `email` is unverified until confirmed); hard delete. |
+| GET | `/v1/users/:id/export` | Everything stored about the person (profile, sessions, events with addresses). |
+| POST | `/v1/users/:id/anonymize` | Erase the person, keep the row and id. Irreversible. |
 | GET / DELETE | `/v1/users/:id/sessions` | Active sessions; revoke all. |
 | DELETE | `/v1/users/:id/sessions/:sid` | Revoke one session. |
 | GET | `/v1/users/:id/events` | Audit log, newest first (`limit`, `before`). |
@@ -70,6 +72,8 @@ Errors are JSON: `{ "error": { "code", "message", "details?" } }`. `423` and `42
 | POST | `/v1/auth/introspect` | `{ accessToken }` → `{ active, claims?, reason? }`. |
 | POST | `/v1/auth/verify-email` | `{ token }` → `{ user }`. |
 | POST | `/v1/auth/verify-email/resend` | `{ email }` → `202`. Silent for unknown or verified emails and inside the per-user cooldown. |
+| POST | `/v1/auth/email/change` | `{ email, password, newEmail }` → `202`. The link goes to the new address. |
+| POST | `/v1/auth/email/confirm` | `{ token }` → `{ user }`. The address changes and counts as verified; the old address is told. |
 | POST | `/v1/auth/password/forgot` | `{ email }` → `202`. Always accepted; silent for unknown, disabled or throttled accounts. |
 | POST | `/v1/auth/password/reset` | `{ token, password }` → `{ user }`. Revokes all sessions, marks email verified. |
 | POST | `/v1/auth/password/change` | Header `X-Access-Token: <jwt>`, body `{ currentPassword, newPassword }` → `204`. Keeps the current session, revokes the others. |
@@ -108,7 +112,7 @@ Key rotation: run `npm run keygen -- keys/jwt-2027`, point `JWT_PRIVATE_KEY_PATH
 ## Security notes
 
 - Passwords: scrypt (`SCRYPT_LOG_N`, default 2^15, r=8, p=1), 32-byte salt, NFKC normalised. Hashes are upgraded transparently at next login when the cost is raised. Policy: minimum length, common-password denylist including "word + digits" variants, no email-derived passwords.
-- Login: constant-time hash comparison; unknown emails cost the same as a wrong password; lockout after `LOGIN_MAX_FAILURES` for `LOGIN_LOCKOUT_MIN`. Optional `LOGIN_REQUIRES_VERIFIED_EMAIL`.
+- Login: constant-time hash comparison; unknown emails cost the same as a wrong password; lockout per account **and client address** after `LOGIN_MAX_FAILURES` for `LOGIN_LOCKOUT_MIN`, doubling for every repeat of the same address (up to a day), so one address cannot lock the owner out elsewhere; `LOGIN_MAX_FAILURES_TOTAL` over all addresses together is the backstop. `MAX_SESSIONS` caps active sessions per user (the least recently used is signed out); `NEW_DEVICE_EMAIL` mails the user when a sign-in comes from a device not seen before. Optional `LOGIN_REQUIRES_VERIFIED_EMAIL`.
 - Tokens: only SHA-256 hashes of refresh, verification and reset tokens are stored. Reset validates the new password before spending the link. Reset revokes all sessions; password change revokes all other sessions.
 - API keys compared in constant time; per-key rate limit; request bodies capped at `BODY_LIMIT`; unknown fields rejected; `Cache-Control: no-store` on every response except JWKS.
 - **Upgrading to a role-aware `AUTH_API_KEYS`:** a key already deployed without a role keeps full `readwrite` access — no `write` route starts rejecting it. It does *not* keep `X-Client-IP` trust automatically, though: that requires the explicit `proxy` flag (`id:secret:readwrite:proxy`). If your backend forwarded the end user's real address and you relied on it appearing in the audit log, add `proxy` to that key when you upgrade — otherwise every session/event records the socket's own peer address (your backend's, not the end user's) instead.
@@ -136,12 +140,13 @@ Class-based; dependencies are injected through constructors, `src/application.js
 ## Out of scope by design
 
 - Social login (OAuth/OIDC providers), multi-factor authentication, **end-user** roles and permissions: add as separate modules when a product needs them; the session and audit model already supports them. (The `read`/`write`/`readwrite` role on an *API key* is a different, narrower thing — it gates which backend integration may call which route, not what an end user of your product can do.)
+- Password history and breached-password lookups (the policy only blocks a list of very common passwords); an end-user second factor (MFA).
 - Multi-tenant user pools: one deployment serves one user pool. Run another instance for another product.
 - Multiple processes on one SQLite file: intended deployment is one instance per database.
 
 ## Events
 
-With `WEBHOOK_OUT_URL` set, the service publishes `auth.user.created`, `auth.user.disabled`, `auth.user.enabled` and `auth.user.deleted` with the user id only (no e-mail address). Best effort; see [examples/events.md](examples/events.md).
+With `WEBHOOK_OUT_URL` set, the service publishes `auth.user.created`, `auth.user.disabled`, `auth.user.enabled`, `auth.user.anonymized` and `auth.user.deleted` with the user id only (no e-mail address). Best effort; see [examples/events.md](examples/events.md).
 
 ## Audit events
 

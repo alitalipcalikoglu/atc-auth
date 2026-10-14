@@ -13,6 +13,7 @@ import { AuthApi } from './http/auth-api.js';
 import { Maintenance } from './maintenance.js';
 import { ActionTokenStore } from './store/action-token-store.js';
 import { EventStore } from './store/event-store.js';
+import { GuardStore } from './store/guard-store.js';
 import { SessionStore } from './store/session-store.js';
 import { UserStore } from './store/user-store.js';
 import { EventPublisher } from './events/event-publisher.js';
@@ -31,6 +32,7 @@ export class Application {
     this.sessions = new SessionStore(this.db);
     this.tokens = new ActionTokenStore(this.db);
     this.events = new EventStore(this.db, AuditEvents.fromSecurityEvent);
+    this.guard = new GuardStore(this.db);
     // Outbox mode, not buffered: a security event must survive a crash between the business
     // mutation that caused it and the network call that reports it — see EventStore.record and
     // docs/READINESS.md's Persistence section for why every other service stays buffered.
@@ -76,7 +78,7 @@ export class Application {
     const { config } = this;
     await this.jwt.init();
     const service = new AuthService({
-      db: this.db, users: this.users, sessions: this.sessions, tokens: this.tokens, events: this.events, publisher: this.publisher,
+      db: this.db, users: this.users, sessions: this.sessions, tokens: this.tokens, events: this.events, guard: this.guard, publisher: this.publisher,
       hasher: new PasswordHasher({ logN: config.scryptLogN }),
       policy: new PasswordPolicy({ minLength: config.passwordMinLength }),
       jwt: this.jwt, mailer: this.mailer, log: /** @type {any} */ (console),
@@ -85,6 +87,10 @@ export class Application {
         verifyTtlMs: config.verifyTokenTtlMin * 60_000,
         resetTtlMs: config.resetTokenTtlMin * 60_000,
         loginMaxFailures: config.loginMaxFailures,
+        loginMaxFailuresTotal: config.loginMaxFailuresTotal,
+        maxSessions: config.maxSessions,
+        newDeviceEmail: config.newDeviceEmail,
+        changeEmailUrlTemplate: config.changeEmailUrlTemplate,
         lockoutMs: config.loginLockoutMin * 60_000,
         loginRequiresVerifiedEmail: config.loginRequiresVerifiedEmail,
         resendCooldownMs: config.resendCooldownSec * 1000,
@@ -97,7 +103,7 @@ export class Application {
     const app = await api.build();
     this.app = app;
     service.log = app.log.child({ component: 'atc-auth' });
-    this.maintenance = new Maintenance({ sessions: this.sessions, tokens: this.tokens, events: this.events, log: app.log.child({ component: 'maintenance' }), options: { eventRetentionDays: config.eventRetentionDays } });
+    this.maintenance = new Maintenance({ sessions: this.sessions, tokens: this.tokens, events: this.events, guard: this.guard, log: app.log.child({ component: 'maintenance' }), options: { eventRetentionDays: config.eventRetentionDays } });
     const { shutdown } = Lifecycle.install({
       forceExitMs: 30_000,
       log: app.log,

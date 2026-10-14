@@ -192,7 +192,18 @@ export class AuthApi {
 
     api.patch('/users/:id', { schema: { params: Schemas.idParams, body: Schemas.patchUser }, preHandler: ApiKeyAuth.require('write') }, async (request) => {
       const { id } = /** @type {{ id: string }} */ (request.params);
-      return { user: Views.user(s.updateUser(id, /** @type {any} */ (request.body), ctx(request))) };
+      const { email, ...rest } = /** @type {{ email?: string, name?: string|null, status?: 'active'|'disabled' }} */ (request.body);
+      let user = Object.keys(rest).length ? s.updateUser(id, rest, ctx(request)) : this.users.byId(id);
+      if (email !== undefined) user = await s.adminSetEmail(id, email, ctx(request));
+      if (!user) throw new AuthError('USER_NOT_FOUND', 'user not found');
+      return { user: Views.user(user) };
+    });
+
+    api.get('/users/:id/export', { schema: { params: Schemas.idParams } }, async (request) => s.exportUser(/** @type {{ id: string }} */ (request.params).id));
+
+    api.post('/users/:id/anonymize', { schema: { params: Schemas.idParams }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
+      await s.anonymize(/** @type {{ id: string }} */ (request.params).id, ctx(request));
+      return reply.code(204).send();
     });
 
     api.delete('/users/:id', { schema: { params: Schemas.idParams }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
@@ -253,6 +264,15 @@ export class AuthApi {
       await s.resendVerification(/** @type {{ email: string }} */ (request.body).email, ctx(request));
       return reply.code(202).send({ accepted: true });
     });
+
+    api.post('/auth/email/change', { schema: { body: Schemas.changeEmail } }, async (request, reply) => {
+      await s.requestEmailChange(/** @type {any} */ (request.body), ctx(request));
+      return reply.code(202).send({ accepted: true });
+    });
+
+    api.post('/auth/email/confirm', { schema: { body: Schemas.token } }, async (request) => ({
+      user: Views.user(await s.confirmEmailChange(/** @type {{ token: string }} */ (request.body).token, ctx(request))),
+    }));
 
     api.post('/auth/password/forgot', { schema: { body: Schemas.emailOnly } }, async (request, reply) => {
       await s.forgotPassword(/** @type {{ email: string }} */ (request.body).email, ctx(request));

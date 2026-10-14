@@ -34,6 +34,9 @@ export class Config {
     this.passwordMinLength = v.passwordMinLength;
     this.scryptLogN = v.scryptLogN;
     this.loginMaxFailures = v.loginMaxFailures;
+    this.loginMaxFailuresTotal = v.loginMaxFailuresTotal;
+    this.maxSessions = v.maxSessions;
+    this.newDeviceEmail = v.newDeviceEmail;
     this.loginLockoutMin = v.loginLockoutMin;
     this.loginRequiresVerifiedEmail = v.loginRequiresVerifiedEmail;
     this.resendCooldownSec = v.resendCooldownSec;
@@ -44,6 +47,7 @@ export class Config {
     this.emailLocale = v.emailLocale;
     this.verifyUrlTemplate = v.verifyUrlTemplate;
     this.resetUrlTemplate = v.resetUrlTemplate;
+    this.changeEmailUrlTemplate = v.changeEmailUrlTemplate;
     this.eventRetentionDays = v.eventRetentionDays;
     this.auditOutboxRetentionDays = v.auditOutboxRetentionDays;
     Object.freeze(this);
@@ -95,6 +99,9 @@ export class Config {
       passwordMinLength: r.integer('PASSWORD_MIN_LENGTH', 10, { min: 8, max: 128 }),
       scryptLogN: r.integer('SCRYPT_LOG_N', 15, { min: 14, max: 20 }),
       loginMaxFailures: r.integer('LOGIN_MAX_FAILURES', 10, { min: 3, max: 100 }),
+      loginMaxFailuresTotal: r.integer('LOGIN_MAX_FAILURES_TOTAL', 50, { min: 3, max: 10_000 }),
+      maxSessions: r.integer('MAX_SESSIONS', 10, { min: 0, max: 1_000 }),
+      newDeviceEmail: r.boolean('NEW_DEVICE_EMAIL', true),
       loginLockoutMin: r.integer('LOGIN_LOCKOUT_MIN', 15, { min: 1 }),
       loginRequiresVerifiedEmail: r.boolean('LOGIN_REQUIRES_VERIFIED_EMAIL', false),
       resendCooldownSec: r.integer('RESEND_COOLDOWN_SEC', 60, { min: 0, max: 3_600 }),
@@ -104,6 +111,7 @@ export class Config {
       appName: r.required('APP_NAME'),
       emailLocale,
       verifyUrlTemplate: Config.#urlTemplate(r.required('VERIFY_URL_TEMPLATE'), 'VERIFY_URL_TEMPLATE'),
+      changeEmailUrlTemplate: Config.#urlTemplate(r.optional('CHANGE_EMAIL_URL_TEMPLATE') || r.required('VERIFY_URL_TEMPLATE'), 'CHANGE_EMAIL_URL_TEMPLATE'),
       resetUrlTemplate: Config.#urlTemplate(r.required('RESET_URL_TEMPLATE'), 'RESET_URL_TEMPLATE'),
       eventRetentionDays: r.integer('EVENT_RETENTION_DAYS', 90, { min: 1 }),
       auditOutboxRetentionDays: r.integer('AUDIT_OUTBOX_RETENTION_DAYS', 7, { min: 1 }),

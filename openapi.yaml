@@ -231,7 +231,7 @@ paths:
 
     patch:
       operationId: atc-auth.users.patch
-      summary: Update a user's name or status
+      summary: Update a user's name, email address or status
       description: >-
         Requires an API key with the `write` role. Setting `status: "disabled"` revokes every
         active session for the user as part of the same transaction.
@@ -642,6 +642,87 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /v1/users/{id}/export:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    get:
+      operationId: atc-auth.users.export
+      summary: Everything stored about one person (data-subject request)
+      description: Profile, active sessions and the security events with their addresses; never the password hash.
+      tags: [Users]
+      x-stack-visibility: authenticated
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { type: object, required: [exportedAt, user, sessions, events], properties: { exportedAt: { type: string, format: date-time }, user: { type: object }, sessions: { type: array, items: { type: object } }, events: { type: array, items: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/users/{id}/anonymize:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    post:
+      operationId: atc-auth.users.anonymize
+      summary: Erase the person, keep the account row (irreversible)
+      description: >-
+        Requires an API key with the `write` role. The address becomes `anonymized-<id>@anonymized.invalid`,
+        the name, password, sessions and tokens are removed, the account is disabled and the addresses recorded
+        in the user's events are cleared. The id stays, so events and references in other services still resolve.
+      tags: [Users]
+      x-stack-visibility: authenticated
+      responses:
+        "204": { description: Anonymized. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/auth/email/change:
+    post:
+      operationId: atc-auth.email.change
+      summary: Ask to change the email address (confirmation goes to the new address)
+      description: >-
+        The user proves the password. A mail with a link goes to the NEW address; nothing changes until it is used.
+        Always `202`, also when the new address is already taken (no hint). `401 INVALID_CREDENTIALS` for a wrong
+        email or password, `400 INVALID_ARGUMENT` when the new address equals the current one.
+      tags: [Users]
+      x-stack-visibility: authenticated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeEmailRequest" }
+      responses:
+        "202": { description: Accepted. }
+        "400": { $ref: "#/components/responses/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/auth/email/confirm:
+    post:
+      operationId: atc-auth.email.confirm
+      summary: Confirm the new email address with the emailed token
+      description: The address changes and counts as verified; the old address is told. Single use (`401 INVALID_TOKEN`), `409 EMAIL_TAKEN` if someone took it meanwhile.
+      tags: [Users]
+      x-stack-visibility: authenticated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenRequest" }
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { description: EMAIL_TAKEN., content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -650,7 +731,7 @@ components:
       description: >-
         `Authorization: Bearer <API key>`. Keys are `id:secret[:role[:proxy]]`; `role` is
         `read`/`write`/`readwrite` (missing role defaults to `readwrite`). Only
-        `POST /v1/users`, `PATCH /v1/users/{id}` and `DELETE /v1/users/{id}` require the `write`
+        `POST /v1/users`, `PATCH /v1/users/{id}`, `POST /v1/users/{id}/anonymize` and `DELETE /v1/users/{id}` require the `write`
         role (or `readwrite`) — every other `/v1/*` route and `/metrics` accept any valid key
         regardless of role; this sub-scoping is noted per-operation since a single Bearer scheme
         cannot express it structurally.
@@ -835,7 +916,17 @@ components:
       minProperties: 1
       properties:
         name: { type: [string, "null"], minLength: 1, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254, description: "Sets the address directly: it becomes unverified and a verification mail goes to it (`409 EMAIL_TAKEN`)." }
         status: { type: string, enum: [active, disabled] }
+
+    ChangeEmailRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, newEmail]
+      properties:
+        email: { type: string, format: email, maxLength: 254, description: Current address. }
+        password: { type: string, minLength: 1, maxLength: 1024 }
+        newEmail: { type: string, format: email, maxLength: 254 }
 
     LoginRequest:
       type: object

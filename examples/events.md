@@ -11,6 +11,7 @@ WEBHOOK_OUT_API_KEY=<a webhook-out key with the publish role>
 | `auth.user.disabled` | An admin disabled an account (sessions are revoked) | `id` |
 | `auth.user.enabled` | An admin enabled a disabled account | `id` |
 | `auth.user.deleted` | An admin deleted an account | `id` |
+| `auth.user.anonymized` | A person was erased, the account row kept | `id` |
 
 The payload is the user id and nothing else: no e-mail address, name or IP, so a webhook subscriber never receives personal data it does not need. Look the user up with `GET /v1/users/:id` and an admin key if more is needed (not possible after `deleted`).
 

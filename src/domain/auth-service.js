@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { PasswordHasher } from '../crypto/password.js';
 import { UserStore } from '../store/user-store.js';
 import { AuthError } from './errors.js';
@@ -9,6 +10,7 @@ import { AuthError } from './errors.js';
 /** @typedef {import('../store/session-store.js').SessionStore} SessionStore */
 /** @typedef {import('../store/action-token-store.js').ActionTokenStore} ActionTokenStore */
 /** @typedef {import('../store/event-store.js').EventStore} EventStore */
+/** @typedef {import('../store/guard-store.js').GuardStore} GuardStore */
 /** @typedef {import('./mailer.js').Mailer} Mailer */
 /** @typedef {import('./password-policy.js').PasswordPolicy} PasswordPolicy */
 
@@ -33,7 +35,11 @@ import { AuthError } from './errors.js';
  * @property {number} refreshTtlMs
  * @property {number} verifyTtlMs
  * @property {number} resetTtlMs
- * @property {number} loginMaxFailures
+ * @property {number} loginMaxFailures        Per account and client address.
+ * @property {number} loginMaxFailuresTotal   Per account over every address.
+ * @property {number} maxSessions             0 = unlimited.
+ * @property {boolean} newDeviceEmail
+ * @property {string} changeEmailUrlTemplate
  * @property {number} lockoutMs
  * @property {boolean} loginRequiresVerifiedEmail
  * @property {number} resendCooldownMs
@@ -53,6 +59,7 @@ export class AuthService {
    * @param {SessionStore} deps.sessions
    * @param {ActionTokenStore} deps.tokens
    * @param {EventStore} deps.events
+   * @param {GuardStore} deps.guard
    * @param {PasswordHasher} deps.hasher
    * @param {PasswordPolicy} deps.policy
    * @param {JwtSigner} deps.jwt
@@ -62,12 +69,13 @@ export class AuthService {
    * @param {{ publish: (type: string, data?: unknown) => boolean }} [deps.publisher]  Domain events for webhook-out; ids only, no personal data.
    * @param {() => number} [deps.now]
    */
-  constructor({ db, users, sessions, tokens, events, hasher, policy, jwt, mailer, log, options, publisher, now = Date.now }) {
+  constructor({ db, users, sessions, tokens, events, guard, hasher, policy, jwt, mailer, log, options, publisher, now = Date.now }) {
     this.db = db;
     this.users = users;
     this.sessions = sessions;
     this.tokens = tokens;
     this.events = events;
+    this.guard = guard;
     this.publisher = publisher ?? { publish: () => false };
     this.hasher = hasher;
     this.policy = policy;
@@ -155,15 +163,20 @@ export class AuthService {
       this.events.record({ type: 'login.failed', ip: ctx.ip, meta: { reason: 'unknown_email' } }, now);
       throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
     }
-    if (user.locked_until !== null && user.locked_until > now) {
+    const addr = ctx.ip ?? 'unknown';
+    const addressLock = this.guard.lockedUntil(user.id, addr, now);
+    const lockedUntil = Math.max(user.locked_until !== null && user.locked_until > now ? user.locked_until : 0, addressLock ?? 0);
+    if (lockedUntil > now) {
       this.events.record({ userId: user.id, type: 'login.failed', ip: ctx.ip, meta: { reason: 'locked' } }, now);
-      throw new AuthError('ACCOUNT_LOCKED', 'too many failed attempts, try again later', { retryAfterSec: Math.ceil((user.locked_until - now) / 1000) });
+      throw new AuthError('ACCOUNT_LOCKED', 'too many failed attempts, try again later', { retryAfterSec: Math.ceil((lockedUntil - now) / 1000) });
     }
     if (!ok) {
       this.db.transaction(() => {
-        const r = this.users.recordLoginFailure(user.id, { maxFailures: this.options.loginMaxFailures, lockoutMs: this.options.lockoutMs, now });
-        this.events.record({ userId: user.id, type: 'login.failed', ip: ctx.ip, meta: { reason: 'bad_password', failures: r.failed_logins } }, now);
-        if (r.locked_until) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip }, now);
+        const pair = this.guard.fail(user.id, addr, { maxFailures: this.options.loginMaxFailures, lockoutMs: this.options.lockoutMs }, now);
+        const total = this.users.recordLoginFailure(user.id, { maxFailures: this.options.loginMaxFailuresTotal, lockoutMs: this.options.lockoutMs, now });
+        this.events.record({ userId: user.id, type: 'login.failed', ip: ctx.ip, meta: { reason: 'bad_password', failures: pair.failures } }, now);
+        if (pair.lockedUntil) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'address' } }, now);
+        else if (total.locked_until) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'account' } }, now);
       });
       throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
     }
@@ -179,13 +192,26 @@ export class AuthService {
     // must commit together as one unit — success accounting, the new session, its audit event — is
     // synchronous and goes inside it.
     const rehash = this.hasher.needsRehash(user.password_hash) ? await this.hasher.hash(input.password) : null;
-    const { session, refreshToken } = this.db.transaction(() => {
+    const device = createHash('sha256').update(ctx.userAgent ?? '').digest('hex').slice(0, 24);
+    const { session, refreshToken, newDevice } = this.db.transaction(() => {
       this.users.recordLoginSuccess(user.id, now);
+      this.guard.clear(user.id, addr);
       if (rehash) this.users.setPassword(user.id, rehash, now);
       const created = this.sessions.create({ userId: user.id, ttlMs: this.options.refreshTtlMs, ip: ctx.ip, userAgent: ctx.userAgent }, now);
       this.events.record({ userId: user.id, type: 'login.succeeded', ip: ctx.ip, meta: { sessionId: created.session.id } }, now);
-      return created;
+      // Session cap: the least recently used sessions beyond MAX_SESSIONS are signed out.
+      if (this.options.maxSessions > 0) {
+        for (const old of this.sessions.activeForUser(user.id, now).slice(this.options.maxSessions)) {
+          if (this.sessions.revoke(old.id, now)) this.events.record({ userId: user.id, type: 'session.revoked', ip: ctx.ip, meta: { sessionId: old.id, reason: 'session_limit' } }, now);
+        }
+      }
+      const isNew = this.guard.seenDevice(user.id, device, now);
+      if (isNew) this.events.record({ userId: user.id, type: 'login.new_device', ip: ctx.ip, meta: { sessionId: created.session.id } }, now);
+      return { ...created, newDevice: isNew };
     });
+    if (newDevice && this.options.newDeviceEmail) {
+      try { await this.mailer.sendNotice({ to: user.email, name: user.name, kind: 'new_device', details: { ip: ctx.ip ?? '', userAgent: (ctx.userAgent ?? '').slice(0, 120) } }); } catch (err) { this.log.error({ err, userId: user.id }, 'new device notice failed'); }
+    }
     const fresh = this.#requireUser(user.id);
     return { user: fresh, tokens: await this.#tokenPair(fresh, session, refreshToken) };
   }
@@ -373,6 +399,113 @@ export class AuthService {
       }
       this.events.record({ userId: user.id, type: 'password.changed', ip: ctx.ip }, now);
     });
+  }
+
+  // ---------------------------------------------------------------- email address
+
+  /**
+   * The signed-out flow: the user proves the password and gets a link at the NEW address. Always
+   * resolves quietly (an address already in use gets no mail and no hint).
+   * @param {{ email: string, password: string, newEmail: string }} input
+   * @param {Ctx} ctx
+   */
+  async requestEmailChange(input, ctx) {
+    const user = this.users.byEmail(input.email);
+    const ok = user ? await this.hasher.verify(input.password, user.password_hash) : await this.#burnHash(input.password);
+    if (!user || !ok || user.status === 'disabled') throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
+    const next = UserStore.normalizeEmail(input.newEmail);
+    if (next === user.email) throw new AuthError('INVALID_ARGUMENT', 'that is already the email address of this account');
+    if (this.users.byEmail(next) || this.#resendThrottled(user.id, 'change_email')) return;
+    const now = this.now();
+    const token = this.db.transaction(() => {
+      const t = this.tokens.issue({ userId: user.id, purpose: 'change_email', ttlMs: this.options.verifyTtlMs, payload: next }, now);
+      this.events.record({ userId: user.id, type: 'email.change_requested', ip: ctx.ip }, now);
+      return t;
+    });
+    try {
+      await this.mailer.sendEmailChange({ to: next, name: user.name, url: this.options.changeEmailUrlTemplate.replace('{token}', encodeURIComponent(token)), expiresInMinutes: Math.round(this.options.verifyTtlMs / 60_000) });
+    } catch (err) {
+      this.log.error({ err, userId: user.id }, 'email change mail failed');
+    }
+  }
+
+  /**
+   * The link in that mail: the address changes and counts as verified (the mailbox was proven). The old address is told.
+   * @param {string} token
+   * @param {Ctx} ctx
+   * @returns {Promise<UserRow>}
+   */
+  async confirmEmailChange(token, ctx) {
+    const now = this.now();
+    const peek = this.tokens.peek(token, 'change_email', now);
+    if (!peek?.payload) throw new AuthError('INVALID_TOKEN', 'confirmation link is invalid or expired');
+    const user = this.#requireUser(peek.user_id);
+    const next = peek.payload;
+    if (this.users.byEmail(next)) throw new AuthError('EMAIL_TAKEN', 'an account with this email already exists');
+    const previous = user.email;
+    this.db.transaction(() => {
+      if (!this.tokens.consume(token, 'change_email', now)) throw new AuthError('INVALID_TOKEN', 'confirmation link is invalid or expired');
+      this.users.setEmail(user.id, next, now, now);
+      this.tokens.invalidate(user.id, 'verify_email', now); // a pending verification of the old address no longer applies
+      this.events.record({ userId: user.id, type: 'email.changed', ip: ctx.ip }, now);
+    });
+    try { await this.mailer.sendNotice({ to: previous, name: user.name, kind: 'email_changed', details: { ip: ctx.ip ?? '' } }); } catch (err) { this.log.error({ err, userId: user.id }, 'email change notice failed'); }
+    return this.#requireUser(user.id);
+  }
+
+  /**
+   * Administration: set another address directly. It starts unverified and a verification mail goes to it.
+   * @param {string} userId @param {string} email @param {Ctx} ctx @returns {Promise<UserRow>}
+   */
+  async adminSetEmail(userId, email, ctx) {
+    const user = this.#requireUser(userId);
+    const next = UserStore.normalizeEmail(email);
+    if (next === user.email) return user;
+    if (this.users.byEmail(next)) throw new AuthError('EMAIL_TAKEN', 'an account with this email already exists');
+    const now = this.now();
+    this.db.transaction(() => {
+      this.users.setEmail(userId, next, null, now);
+      this.events.record({ userId, type: 'email.changed', ip: ctx.ip, meta: { by: 'admin' } }, now);
+    });
+    await this.#sendVerification(this.#requireUser(userId));
+    return this.#requireUser(userId);
+  }
+
+  // ---------------------------------------------------------------- personal data
+
+  /**
+   * Everything stored about one person, for a data-subject request: profile, sessions, security events.
+   * @param {string} userId
+   */
+  exportUser(userId) {
+    const user = this.#requireUser(userId);
+    const iso = (/** @type {number|null} */ ms) => (ms === null ? null : new Date(ms).toISOString());
+    return {
+      exportedAt: new Date(this.now()).toISOString(),
+      user: { id: user.id, email: user.email, name: user.name, status: user.status, emailVerifiedAt: iso(user.email_verified_at), passwordChangedAt: iso(user.password_changed_at), createdAt: iso(user.created_at), updatedAt: iso(user.updated_at) },
+      sessions: this.sessions.activeForUser(userId, this.now()).map((x) => ({ id: x.id, ip: x.ip, userAgent: x.user_agent, createdAt: iso(x.created_at), lastUsedAt: iso(x.last_used_at), expiresAt: iso(x.expires_at) })),
+      events: this.events.forUser(userId, { limit: 1_000 }).map((e) => ({ type: e.type, ip: e.ip, meta: e.meta ? JSON.parse(e.meta) : null, at: iso(e.at) })),
+    };
+  }
+
+  /**
+   * Erase the person but keep the account row: the address becomes an unusable placeholder, the name,
+   * password, sessions, tokens and recorded addresses go. The id stays so events and other services'
+   * references still resolve. Irreversible.
+   * @param {string} userId @param {Ctx} ctx
+   */
+  async anonymize(userId, ctx) {
+    this.#requireUser(userId);
+    const unusable = await this.hasher.hash(randomBytes(32).toString('hex'));
+    const now = this.now();
+    this.db.transaction(() => {
+      this.users.anonymize(userId, `anonymized-${userId.slice(0, 8)}@anonymized.invalid`, unusable, now);
+      this.sessions.revokeAllForUser(userId, now);
+      this.events.scrub(userId);
+      this.guard.purgeUser(userId);
+      this.events.record({ userId, type: 'account.anonymized', ip: ctx.ip }, now);
+    });
+    this.publisher.publish('auth.user.anonymized', { id: userId });
   }
 
   // ---------------------------------------------------------------- administration

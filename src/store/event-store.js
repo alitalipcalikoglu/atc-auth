@@ -31,6 +31,7 @@ export class EventStore {
       insert: db.prepare(`INSERT INTO events (user_id, type, ip, meta, at) VALUES (?, ?, ?, ?, ?)`),
       forUser: db.prepare(`SELECT ${C} FROM events WHERE user_id = ? AND id < ? ORDER BY id DESC LIMIT ?`),
       purge: db.prepare(`DELETE FROM events WHERE at < ?`),
+      scrub: db.prepare(`UPDATE events SET ip = NULL, meta = NULL WHERE user_id = ?`),
       outboxInsert: db.prepare(`INSERT INTO outbox (id, at, payload) VALUES (?, ?, ?)`),
       outboxPending: db.prepare(`SELECT id, at, payload FROM outbox WHERE sent_at IS NULL ORDER BY at LIMIT ?`),
       outboxPurge: db.prepare(`DELETE FROM outbox WHERE sent_at IS NOT NULL AND sent_at < ?`),
@@ -59,6 +60,11 @@ export class EventStore {
    */
   forUser(userId, { limit, beforeId = Number.MAX_SAFE_INTEGER }) {
     return /** @type {EventRow[]} */ (this.stmt.forUser.all(userId, beforeId, limit));
+  }
+
+  /** Drop addresses and details from a user's stored events (their types and times stay). @param {string} userId */
+  scrub(userId) {
+    return Number(this.stmt.scrub.run(userId).changes);
   }
 
   /** @param {number} before */

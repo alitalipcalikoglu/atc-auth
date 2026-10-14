@@ -26,6 +26,27 @@ export class Mailer {
     throw new Error('Mailer.sendPasswordReset must be overridden');
   }
 
+  /**
+   * @abstract
+   * @param {{ to: string, name: string|null, url: string, expiresInMinutes: number }} m  Sent to the NEW address.
+   * @returns {Promise<void>}
+   */
+  async sendEmailChange(m) {
+    void m;
+    throw new Error('Mailer.sendEmailChange must be overridden');
+  }
+
+  /**
+   * A plain security notice (new sign-in device, address changed).
+   * @abstract
+   * @param {{ to: string, name: string|null, kind: 'new_device'|'email_changed', details: Record<string, string> }} m
+   * @returns {Promise<void>}
+   */
+  async sendNotice(m) {
+    void m;
+    throw new Error('Mailer.sendNotice must be overridden');
+  }
+
   /** Readiness probe; throws when the backend is unreachable. */
   async verify() {}
 }
@@ -80,6 +101,33 @@ export class NotifyMailer extends Mailer {
     await this.#send('password-reset', m.to, {
       appName: this.appName, locale: this.locale, resetUrl: m.url, expiresInMinutes: m.expiresInMinutes,
       ...(m.name ? { name: m.name } : {}), ...(m.requestIp ? { requestIp: m.requestIp } : {}),
+    });
+  }
+
+  /** @param {{ to: string, name: string|null, url: string, expiresInMinutes: number }} m */
+  async sendEmailChange(m) {
+    const tr = this.locale === 'tr';
+    await this.#send('generic', m.to, {
+      locale: this.locale, appName: this.appName,
+      subject: tr ? `${this.appName}: e-posta adresinizi onaylayın` : `${this.appName}: confirm your new email address`,
+      title: tr ? 'Yeni e-posta adresinizi onaylayın' : 'Confirm your new email address',
+      paragraphs: [tr ? `Hesabınızın e-posta adresini bu adrese değiştirmek için aşağıdaki düğmeye ${m.expiresInMinutes} dakika içinde tıklayın. Bunu siz istemediyseniz bu iletiyi yok sayın.` : `Click the button within ${m.expiresInMinutes} minutes to make this the email address of your account. If you did not ask for this, ignore this message.`],
+      button: { label: tr ? 'Adresi onayla' : 'Confirm address', url: m.url },
+    });
+  }
+
+  /** @param {{ to: string, name: string|null, kind: 'new_device'|'email_changed', details: Record<string, string> }} m */
+  async sendNotice(m) {
+    const tr = this.locale === 'tr';
+    const d = m.details;
+    const lines = m.kind === 'new_device'
+      ? [tr ? 'Hesabınıza daha önce kullanılmamış bir cihazdan giriş yapıldı.' : 'Your account was signed in to from a device we have not seen before.', ...(d.ip ? [`IP: ${d.ip}`] : []), ...(d.userAgent ? [`${tr ? 'Cihaz' : 'Device'}: ${d.userAgent}`] : []), tr ? 'Siz değilseniz parolanızı hemen değiştirin.' : 'If this was not you, change your password now.']
+      : [tr ? 'Hesabınızın e-posta adresi değiştirildi. Bu adres artık bildirim almayacak.' : 'The email address of your account was changed. This address will no longer receive messages.', ...(d.ip ? [`IP: ${d.ip}`] : []), tr ? 'Siz yapmadıysanız hemen destekle iletişime geçin.' : 'If you did not do this, contact support immediately.'];
+    await this.#send('generic', m.to, {
+      locale: this.locale, appName: this.appName,
+      subject: m.kind === 'new_device' ? (tr ? `${this.appName}: yeni cihazdan giriş` : `${this.appName}: new sign-in`) : (tr ? `${this.appName}: e-posta adresi değişti` : `${this.appName}: email address changed`),
+      title: m.kind === 'new_device' ? (tr ? 'Yeni cihazdan giriş' : 'New sign-in') : (tr ? 'E-posta adresi değişti' : 'Email address changed'),
+      paragraphs: lines,
     });
   }
 

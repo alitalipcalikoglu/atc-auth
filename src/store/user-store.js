@@ -20,6 +20,8 @@ export class UserStore {
       setPassword: db.prepare(`UPDATE users SET password_hash = ?, password_changed_at = ?, failed_logins = 0, locked_until = NULL, updated_at = ? WHERE id = ?`),
       setVerified: db.prepare(`UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?`),
       setStatus: db.prepare(`UPDATE users SET status = ?, updated_at = ? WHERE id = ?`),
+      setEmail: db.prepare(`UPDATE users SET email = ?, email_verified_at = ?, updated_at = ? WHERE id = ?`),
+      anonymize: db.prepare(`UPDATE users SET email = ?, name = NULL, password_hash = ?, status = 'disabled', email_verified_at = NULL, failed_logins = 0, locked_until = NULL, updated_at = ? WHERE id = ?`),
       setName: db.prepare(`UPDATE users SET name = ?, updated_at = ? WHERE id = ?`),
       loginFailed: db.prepare(`UPDATE users SET failed_logins = failed_logins + 1, locked_until = CASE WHEN failed_logins + 1 >= ? THEN ? ELSE locked_until END, updated_at = ? WHERE id = ? RETURNING failed_logins, locked_until`),
       loginSucceeded: db.prepare(`UPDATE users SET failed_logins = 0, locked_until = NULL, updated_at = ? WHERE id = ?`),
@@ -99,6 +101,16 @@ export class UserStore {
    */
   setStatus(id, status, now = Date.now()) {
     this.stmt.setStatus.run(status, now, id);
+  }
+
+  /** @param {string} id @param {string} email @param {number|null} verifiedAt @param {number} [now] */
+  setEmail(id, email, verifiedAt, now = Date.now()) {
+    this.stmt.setEmail.run(UserStore.normalizeEmail(email), verifiedAt, now, id);
+  }
+
+  /** Strip what identifies the person; the row (and its id in events) stays. @param {string} id @param {string} email @param {string} passwordHash @param {number} [now] */
+  anonymize(id, email, passwordHash, now = Date.now()) {
+    this.stmt.anonymize.run(email, passwordHash, now, id);
   }
 
   /**
