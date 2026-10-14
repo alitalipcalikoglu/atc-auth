@@ -1,6 +1,6 @@
 # Audit events
 
-Set both variables to forward events to the audit service (repository `audit`); leave both empty to keep the service silent:
+Set both variables to forward events to the audit service (repository `atc-audit`); leave both empty to keep the service silent:
 
 ```
 AUDIT_URL=http://10.0.0.5:3005
@@ -30,6 +30,6 @@ Every event stored in the per-user security log (`GET /v1/users/:id/events`) is 
 ## Query examples on the audit side
 
 ```bash
-curl -s -H "Authorization: Bearer $AUDIT_KEY" "$AUDIT/v1/events?source=auth&action=auth.login.failed&limit=50"
+curl -s -H "Authorization: Bearer $AUDIT_KEY" "$AUDIT/v1/events?source=atc-auth&action=atc-auth.login.failed&limit=50"
 curl -s -H "Authorization: Bearer $AUDIT_KEY" "$AUDIT/v1/events?targetType=user&targetId=<user id>"
 ```

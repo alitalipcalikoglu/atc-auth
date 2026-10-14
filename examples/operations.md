@@ -25,7 +25,7 @@ auth_process_uptime_seconds 86400
 Required: `AUTH_API_KEYS`, `JWT_PRIVATE_KEY_PATH`, `JWT_ISSUER`, `JWT_AUDIENCE`, `NOTIFY_URL`, `NOTIFY_API_KEY`, `APP_NAME`, `VERIFY_URL_TEMPLATE`, `RESET_URL_TEMPLATE`. Full list: [.env.example](../.env.example).
 
 - `JWT_ISSUER` is the public URL clients see, e.g. the gateway (`https://api.example.com`), not the internal address.
-- `NOTIFY_API_KEY` must be one of notify's `NOTIFY_API_KEYS` secrets, ideally an entry named `auth`.
+- `NOTIFY_API_KEY` must be one of notify's `NOTIFY_API_KEYS` secrets, ideally an entry named `atc-auth`.
 - One `AUTH_API_KEYS` entry per caller (`gateway:…`, `admin-panel:…`).
 
 ## Process manager
@@ -42,7 +42,7 @@ pm2 reload auth
 
 ```bash
 docker build -t atc-auth .
-docker run -d -p 3002:3002 -v auth-data:/data -v $PWD/keys:/keys:ro --env-file .env atc-auth
+docker run -d -p 3002:3002 -v atc-auth-data:/data -v $PWD/keys:/keys:ro --env-file .env atc-auth
 ```
 
 `JWT_PRIVATE_KEY_PATH` defaults to `/keys/jwt-private.pem` inside the image.

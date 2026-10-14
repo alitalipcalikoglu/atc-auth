@@ -25,7 +25,7 @@ Production with Docker (mount the database and key directories):
 
 ```bash
 docker build -t atc-auth .
-docker run -p 3002:3002 -v auth-data:/data -v ./keys:/keys:ro --env-file .env atc-auth
+docker run -p 3002:3002 -v atc-auth-data:/data -v ./keys:/keys:ro --env-file .env atc-auth
 ```
 
 Tests and type check:
@@ -156,17 +156,17 @@ file is not the supported or tested deployment model.
 Accepts an inbound `X-Request-Id` unconditionally and logs it via Fastify's default request
 logging. Also parses an inbound `traceparent`, trusted only when `TRUST_PROXY=true` — the caller's
 trace-id is continued with a fresh span-id for this hop, both logged as `traceId`/`spanId` via
-`@atc-web/atc-service-core`'s `registerRequestContext`. Its own call to `notify`
+`@atc-web/atc-service-core`'s `registerRequestContext`. Its own call to `atc-notify`
 (`src/domain/mailer.js`) explicitly propagates the active trace (`RequestContext#propagationHeaders()`);
 no other outbound call does. The security events this service forwards to
 audit do not yet carry a request id of their own — only auth's own log line for the causing request
-does. See [OBSERVABILITY.md](../stack/docs/OBSERVABILITY.md).
+does. See [OBSERVABILITY.md](../atc-stack/docs/OBSERVABILITY.md).
 
 ## Backup / restore
 
 Back up the database and the JWT signing key files (`keys/`) together; restoring the database with
 a different signing key invalidates every outstanding access token immediately. `stack backup`/
-`stack restore` from the workspace root (see `stack/docs/UPGRADE.md`) captures the database and
+`stack restore` from the workspace root (see `atc-stack/docs/UPGRADE.md`) captures the database and
 `keys/` together for exactly this reason. On every start, before applying a pending migration to an
 existing database, the service itself also snapshots the database file to
 `DB_PATH.pre-v<N>-<timestamp>` (directory overridable with `DB_BACKUP_DIR`) — a manual last resort

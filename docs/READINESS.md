@@ -20,7 +20,7 @@ MFA/WebAuthn/OIDC federation, authorization/roles (callers own that).
 
 SQLite (`DB_PATH`): `users` (email `UNIQUE`), `sessions` (refresh-token hash `UNIQUE`, previous-hash
 `UNIQUE` for rotation), `action_tokens` (verify/reset, hashed, single-use), `events` (per-user
-security log, append-only within this service; not the same table as the central `audit` service),
+security log, append-only within this service; not the same table as the central `atc-audit` service),
 `outbox` (Stage 4: `id`/`at`/`payload`/`sent_at` — every row `EventStore.record()` writes into
 `events` gets a matching row here, in the same transaction; a background loop drains it to the audit
 service, see "Audit events" in README.md). Standard migration mechanism (`user_version`, WAL); v2
@@ -106,14 +106,14 @@ Accepts an inbound `X-Request-Id` unconditionally and logs it on every line via 
 request logging. Also parses an inbound `traceparent` via `@atc-web/atc-service-core`'s
 `registerRequestContext`, trust-gated on `TRUST_PROXY` (same boundary as `X-Forwarded-*`): trusted,
 the caller's trace-id is continued with a fresh span-id; untrusted or malformed, a fresh trace is
-started. Both `traceId`/`spanId` are logged on every request line. Its own call to `notify`
+started. Both `traceId`/`spanId` are logged on every request line. Its own call to `atc-notify`
 (`src/domain/mailer.js`) explicitly propagates the active trace
 (`RequestContext#propagationHeaders()`); this is the one internal call site that does — see
-[OBSERVABILITY.md](../../stack/docs/OBSERVABILITY.md). The audit events this service forwards do
+[OBSERVABILITY.md](../../atc-stack/docs/OBSERVABILITY.md). The audit events this service forwards do
 **not** carry a request id — `EventStore`'s per-user security-event schema has no such column today
 (`src/store/event-store.js`), so correlating a forwarded audit event back to the specific inbound
 HTTP request that caused it is not yet possible; only auth's own log line for that request carries
-the id. See `stack/docs/ARCHITECTURE_AUDIT.md` §4.4 for the outbox work this is adjacent to.
+the id. See `atc-stack/docs/ARCHITECTURE_AUDIT.md` §4.4 for the outbox work this is adjacent to.
 
 ## Security model
 
