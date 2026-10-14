@@ -7,6 +7,7 @@ import { AuthError } from '../domain/errors.js';
 import { ApiKeyAuth } from './api-key-auth.js';
 import { Schemas } from './schemas.js';
 import { Views } from './views.js';
+import { AuditMetrics } from '../audit-metrics.js';
 
 /** @typedef {import('../config.js').Config} Config */
 /** @typedef {import('../domain/auth-service.js').AuthService} AuthService */
@@ -48,9 +49,11 @@ export class AuthApi {
    * @param {import('../store/session-store.js').SessionStore} deps.sessions
    * @param {import('../store/event-store.js').EventStore} deps.events
    * @param {string} deps.version
+   * @param {Parameters<typeof AuditMetrics.lines>[0]} [deps.audit] Audit forwarding state, for /metrics.
    * @param {import('../types.js').Logger} [deps.logger]
    */
-  constructor({ config, service, jwt, db, mailer, users, sessions, events, version, logger }) {
+  constructor({ config, service, jwt, db, mailer, users, sessions, events, version, audit, logger }) {
+    this.audit = audit;
     this.config = config;
     this.service = service;
     this.jwt = jwt;
@@ -283,6 +286,7 @@ export class AuthApi {
         '# HELP auth_sessions_active Sessions that are neither revoked nor expired.',
         '# TYPE auth_sessions_active gauge',
         `auth_sessions_active ${this.sessions.countActive()}`,
+        ...AuditMetrics.lines(this.audit),
         '# HELP auth_process_uptime_seconds Process uptime.',
         '# TYPE auth_process_uptime_seconds gauge',
         `auth_process_uptime_seconds ${process.uptime().toFixed(0)}`,

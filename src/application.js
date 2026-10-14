@@ -90,7 +90,8 @@ export class Application {
         resetUrlTemplate: config.resetUrlTemplate,
       },
     });
-    const api = new AuthApi({ config, service, jwt: this.jwt, db: this.db, mailer: this.mailer, users: this.users, sessions: this.sessions, events: this.events, version: this.version });
+    const { audit, events } = this;
+    const api = new AuthApi({ config, service, jwt: this.jwt, db: this.db, mailer: this.mailer, users: this.users, sessions: this.sessions, events: this.events, version: this.version, audit: { get enabled() { return audit.enabled; }, get stats() { return audit.stats; }, get backlog() { return events.outboxPending(1000).length; } } });
     const app = await api.build();
     this.app = app;
     service.log = app.log.child({ component: 'atc-auth' });

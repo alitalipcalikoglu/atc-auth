@@ -162,6 +162,8 @@ no other outbound call does. The security events this service forwards to
 audit do not yet carry a request id of their own — only auth's own log line for the causing request
 does. See [OBSERVABILITY.md](../atc-stack/docs/OBSERVABILITY.md).
 
+Audit forwarding is observable too: `audit_forward_enabled`, `audit_forward_events_total{result="recorded|sent|dropped|failed"}` and `audit_forward_pending`. A rising `dropped`, or a `pending` that does not drain, means audit events are being lost or delayed; alert on it.
+
 ## Backup / restore
 
 Back up the database and the JWT signing key files (`keys/`) together; restoring the database with
