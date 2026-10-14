@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { AuditClient } from '@atc-web/service-core/audit';
+import { AuditClient } from '@atc-web/atc-service-core/audit';
 import { AuditEvents } from '../src/domain/audit-events.js';
 import { Database } from '../src/db.js';
 import { EventStore } from '../src/store/event-store.js';
@@ -11,7 +11,7 @@ import { UserStore } from '../src/store/user-store.js';
 
 const silent = { warn() {}, error() {} };
 
-/** @param {import('../src/db.js').Database} db @param {import('@atc-web/service-core/audit').OutboxSource} outbox @param {any[]} [responses] */
+/** @param {import('../src/db.js').Database} db @param {import('@atc-web/atc-service-core/audit').OutboxSource} outbox @param {any[]} [responses] */
 function client(db, outbox, responses = [{ status: 200 }]) {
   let i = 0;
   const fetchImpl = /** @type {typeof fetch} */ (async (/** @type {any} */ _url, /** @type {any} */ init) => {
@@ -76,7 +76,7 @@ test('2. commit, then crash before delivery -> a fresh AuditClient against the s
     await audit2.flush();
 
     assert.equal(sent.length, 1);
-    assert.equal(sent[0].action, 'auth.user.registered');
+    assert.equal(sent[0].action, 'atc-auth.user.registered');
     db2.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -149,7 +149,7 @@ test('5. restart/stale processing recovery: events recorded across two "process 
       }),
     });
     await audit2.flush();
-    assert.deepEqual(delivered, ['auth.login.succeeded', 'auth.logout', 'auth.session.refreshed'], 'oldest-first, nothing lost across the restart, the pre-restart backlog and the post-restart event both delivered exactly once');
+    assert.deepEqual(delivered, ['atc-auth.login.succeeded', 'atc-auth.logout', 'atc-auth.session.refreshed'], 'oldest-first, nothing lost across the restart, the pre-restart backlog and the post-restart event both delivered exactly once');
     assert.equal(events2.outboxPending(10).length, 0);
     db2.close();
   } finally {
@@ -165,9 +165,9 @@ test('security events are forwarded as auth.* audit events with outcome, actor a
   events.record({ userId: 'u1', type: 'login.succeeded', ip: '203.0.113.9', meta: { sessionId: 's1' } }, Date.parse('2026-09-17T10:00:00Z'));
   const rows = outbox.pending(10).map((r) => ({ ...JSON.parse(r.payload), at: new Date(r.at).toISOString() }));
   const [a, b, c] = rows;
-  assert.deepEqual([a.action, a.outcome, a.actor, a.target, a.ip, a.meta, a.at], ['auth.login.failed', 'failure', { type: 'user', id: 'u1' }, { type: 'user', id: 'u1' }, '203.0.113.9', { reason: 'bad_password', failures: 2 }, '2026-09-17T10:00:00.000Z']);
+  assert.deepEqual([a.action, a.outcome, a.actor, a.target, a.ip, a.meta, a.at], ['atc-auth.login.failed', 'failure', { type: 'user', id: 'u1' }, { type: 'user', id: 'u1' }, '203.0.113.9', { reason: 'bad_password', failures: 2 }, '2026-09-17T10:00:00.000Z']);
   assert.deepEqual([b.actor, b.target, b.outcome], [undefined, undefined, 'failure']);
-  assert.deepEqual([c.action, c.outcome], ['auth.login.succeeded', 'success']);
+  assert.deepEqual([c.action, c.outcome], ['atc-auth.login.succeeded', 'success']);
   assert.equal(events.forUser('u1', { limit: 10 }).length, 2, 'local log still written');
 });
 

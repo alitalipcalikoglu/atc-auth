@@ -103,7 +103,7 @@ service, reached only from the gateway, console, or another backend). Redacts `a
 ## Tracing
 
 Accepts an inbound `X-Request-Id` unconditionally and logs it on every line via Fastify's default
-request logging. Also parses an inbound `traceparent` via `@atc-web/service-core`'s
+request logging. Also parses an inbound `traceparent` via `@atc-web/atc-service-core`'s
 `registerRequestContext`, trust-gated on `TRUST_PROXY` (same boundary as `X-Forwarded-*`): trusted,
 the caller's trace-id is continued with a fresh span-id; untrusted or malformed, a fresh trace is
 started. Both `traceId`/`spanId` are logged on every request line. Its own call to `notify`

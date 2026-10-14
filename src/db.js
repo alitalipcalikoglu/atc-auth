@@ -1,4 +1,4 @@
-import { Database as CoreDatabase } from '@atc-web/service-core/db';
+import { Database as CoreDatabase } from '@atc-web/atc-service-core/db';
 
 /** SQLite connection with schema migrations applied on open. */
 export class Database extends CoreDatabase {
@@ -62,7 +62,7 @@ export class Database extends CoreDatabase {
     -- never exists here at all if it rolls back. "id" is a stable UUID generated once at insert and
     -- reused on every delivery attempt — audit's UNIQUE(source, client_id) makes a resend (e.g.
     -- after a crash between a successful send and "sent_at" being set) a safe no-op there, not a
-    -- second record. See AuditClient's outbox mode (@atc-web/service-core/audit).
+    -- second record. See AuditClient's outbox mode (@atc-web/atc-service-core/audit).
     CREATE TABLE outbox (
       id       TEXT PRIMARY KEY,
       at       INTEGER NOT NULL,

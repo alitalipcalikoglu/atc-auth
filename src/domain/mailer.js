@@ -1,4 +1,4 @@
-import { RequestContext } from '@atc-web/service-core/request-context';
+import { RequestContext } from '@atc-web/atc-service-core/request-context';
 
 /**
  * Outbound transactional mail contract. The auth service never renders email itself; it

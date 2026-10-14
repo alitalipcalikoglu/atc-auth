@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 /** @typedef {import('../db.js').Database} Database */
 /** @typedef {import('../types.js').EventRow} EventRow */
-/** @typedef {import('@atc-web/service-core/audit').AuditEvent} AuditEvent */
+/** @typedef {import('@atc-web/atc-service-core/audit').AuditEvent} AuditEvent */
 
 /**
  * Append-only security audit log, and (Stage 4) the transactional outbox that forwards each event
@@ -67,7 +67,7 @@ export class EventStore {
   }
 
   /**
-   * Outbox rows not yet sent, oldest first — an {@link import('@atc-web/service-core/audit').OutboxSource}.
+   * Outbox rows not yet sent, oldest first — an {@link import('@atc-web/atc-service-core/audit').OutboxSource}.
    * @param {number} limit
    */
   outboxPending(limit) {

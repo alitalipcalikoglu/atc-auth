@@ -25,7 +25,7 @@ test('GET /v1/info reports service identity and capabilities', async () => {
   const res = await call('GET', '/v1/info');
   assert.equal(res.statusCode, 200);
   const body = res.json();
-  assert.equal(body.service, 'auth');
+  assert.equal(body.service, 'atc-auth');
   assert.equal(body.version, '1.0.0');
   assert.equal(body.apiVersion, 'v1');
   assert.deepEqual(body.capabilities, ['jwks', 'email-verification', 'password-reset', 'refresh-tokens']);

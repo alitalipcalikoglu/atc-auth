@@ -1,7 +1,7 @@
 import { Config } from './config.js';
-import { AuditClient } from '@atc-web/service-core/audit';
-import { readServiceVersion } from '@atc-web/service-core/fastify';
-import { Lifecycle } from '@atc-web/service-core/lifecycle';
+import { AuditClient } from '@atc-web/atc-service-core/audit';
+import { readServiceVersion } from '@atc-web/atc-service-core/fastify';
+import { Lifecycle } from '@atc-web/atc-service-core/lifecycle';
 import { AuditEvents } from './domain/audit-events.js';
 import { JwtSigner } from './crypto/jwt.js';
 import { PasswordHasher } from './crypto/password.js';
@@ -93,7 +93,7 @@ export class Application {
     const api = new AuthApi({ config, service, jwt: this.jwt, db: this.db, mailer: this.mailer, users: this.users, sessions: this.sessions, events: this.events, version: this.version });
     const app = await api.build();
     this.app = app;
-    service.log = app.log.child({ component: 'auth' });
+    service.log = app.log.child({ component: 'atc-auth' });
     this.maintenance = new Maintenance({ sessions: this.sessions, tokens: this.tokens, events: this.events, log: app.log.child({ component: 'maintenance' }), options: { eventRetentionDays: config.eventRetentionDays } });
     const { shutdown } = Lifecycle.install({
       forceExitMs: 30_000,

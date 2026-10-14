@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { RequestContext } from '@atc-web/service-core/request-context';
-import { TraceContext } from '@atc-web/service-core/trace';
+import { RequestContext } from '@atc-web/atc-service-core/request-context';
+import { TraceContext } from '@atc-web/atc-service-core/trace';
 import { MailerError, NotifyMailer } from '../src/domain/mailer.js';
 
 /** @param {(url: string, init: RequestInit) => Response|Promise<Response>} impl */

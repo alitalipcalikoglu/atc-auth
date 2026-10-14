@@ -1,6 +1,6 @@
-# auth
+# atc-auth
 
-Authentication service for application backends: user accounts, scrypt passwords, short-lived ES256 access tokens, rotating refresh tokens with reuse detection, email verification and password reset, audit log. Talks to other services over HTTP only; sends email through the [notify](https://github.com/alitalipcalikoglu/notify) service.
+Authentication service for application backends: user accounts, scrypt passwords, short-lived ES256 access tokens, rotating refresh tokens with reuse detection, email verification and password reset, audit log. Talks to other services over HTTP only; sends email through the [atc-notify](https://github.com/alitalipcalikoglu/atc-notify) service.
 
 Runtime dependencies: `fastify`, `@fastify/rate-limit`, `jose`. Storage is SQLite via `node:sqlite` (built into Node 22.13+). The folder is self-contained: copy it to any host with Node 22 and run.
 
@@ -156,7 +156,7 @@ file is not the supported or tested deployment model.
 Accepts an inbound `X-Request-Id` unconditionally and logs it via Fastify's default request
 logging. Also parses an inbound `traceparent`, trusted only when `TRUST_PROXY=true` — the caller's
 trace-id is continued with a fresh span-id for this hop, both logged as `traceId`/`spanId` via
-`@atc-web/service-core`'s `registerRequestContext`. Its own call to `notify`
+`@atc-web/atc-service-core`'s `registerRequestContext`. Its own call to `notify`
 (`src/domain/mailer.js`) explicitly propagates the active trace (`RequestContext#propagationHeaders()`);
 no other outbound call does. The security events this service forwards to
 audit do not yet carry a request id of their own — only auth's own log line for the causing request

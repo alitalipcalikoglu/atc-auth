@@ -1,4 +1,4 @@
-/** @typedef {import('@atc-web/service-core/audit').AuditEvent} AuditEvent */
+/** @typedef {import('@atc-web/atc-service-core/audit').AuditEvent} AuditEvent */
 
 /**
  * Maps the security events this service stores per user onto audit-service events: every event
@@ -15,7 +15,7 @@ export class AuditEvents {
    */
   static fromSecurityEvent(e, at) {
     return {
-      action: `auth.${e.type}`,
+      action: `atc-auth.${e.type}`,
       outcome: AuditEvents.FAILURES.has(e.type) ? 'failure' : 'success',
       actor: e.userId ? { type: 'user', id: e.userId } : undefined,
       target: e.userId ? { type: 'user', id: e.userId } : undefined,

@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: auth
+  title: atc-auth
   version: "1.1.0"
   description: >-
     User accounts, sessions and JWT-based authentication for the atc-web platform. Callers are
@@ -30,7 +30,7 @@ security:
 paths:
   /openapi.yaml:
     get:
-      operationId: auth.openapi
+      operationId: atc-auth.openapi
       summary: Download the canonical OpenAPI document
       description: Returns this service's repository-root OpenAPI 3.1 document byte-for-byte.
       security: []
@@ -43,7 +43,7 @@ paths:
 
   /health:
     get:
-      operationId: auth.health.get
+      operationId: atc-auth.health.get
       summary: Liveness probe
       tags: [Operational]
       security: []
@@ -57,7 +57,7 @@ paths:
 
   /ready:
     get:
-      operationId: auth.ready.get
+      operationId: atc-auth.ready.get
       summary: Readiness probe
       description: >-
         Pings the database and verifies the mail transport. The result is cached for 30 seconds
@@ -79,7 +79,7 @@ paths:
 
   /v1/info:
     get:
-      operationId: auth.info.get
+      operationId: atc-auth.info.get
       summary: Service and API contract identification
       tags: [Operational]
       security: []
@@ -95,7 +95,7 @@ paths:
 
   /.well-known/jwks.json:
     get:
-      operationId: auth.jwks.get
+      operationId: atc-auth.jwks.get
       summary: JSON Web Key Set for access-token verification
       description: >-
         Public verification keys for the ES256 access tokens this service signs (current key plus,
@@ -115,7 +115,7 @@ paths:
 
   /metrics:
     get:
-      operationId: auth.metrics.get
+      operationId: atc-auth.metrics.get
       summary: Prometheus metrics
       description: Authenticated (API key), but never subject to this service's own rate limiter.
       tags: [Operational]
@@ -130,7 +130,7 @@ paths:
 
   /v1/users:
     post:
-      operationId: auth.users.create
+      operationId: atc-auth.users.create
       summary: Register a user
       description: >-
         Requires an API key with the `write` role (`write` or `readwrite`; `read`-only keys get
@@ -168,7 +168,7 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
 
     get:
-      operationId: auth.users.list
+      operationId: atc-auth.users.list
       summary: List or look up users
       description: >-
         Any valid API key may call this — there is no role gate on reads (confirmed: a
@@ -214,7 +214,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/UserId"
     get:
-      operationId: auth.users.get
+      operationId: atc-auth.users.get
       summary: Get a user by id
       tags: [Users]
       x-stack-visibility: authenticated
@@ -230,7 +230,7 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
 
     patch:
-      operationId: auth.users.patch
+      operationId: atc-auth.users.patch
       summary: Update a user's name or status
       description: >-
         Requires an API key with the `write` role. Setting `status: "disabled"` revokes every
@@ -255,7 +255,7 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
 
     delete:
-      operationId: auth.users.delete
+      operationId: atc-auth.users.delete
       summary: Delete a user
       description: Requires an API key with the `write` role.
       tags: [Users]
@@ -272,7 +272,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/UserId"
     get:
-      operationId: auth.sessions.list
+      operationId: atc-auth.sessions.list
       summary: List a user's active sessions
       description: Sessions that are neither revoked nor expired, as of now.
       tags: [Sessions]
@@ -289,7 +289,7 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
 
     delete:
-      operationId: auth.sessions.revokeAll
+      operationId: atc-auth.sessions.revokeAll
       summary: Revoke every active session for a user
       description: >-
         Returns the count revoked. Note this endpoint returns `200` with a body, **not** `204` —
@@ -318,7 +318,7 @@ paths:
         schema: { type: string, format: uuid }
         description: Session id.
     delete:
-      operationId: auth.sessions.revokeOne
+      operationId: atc-auth.sessions.revokeOne
       summary: Revoke a single session
       description: >-
         Idempotent create-then-delete semantics aside, a session that does not exist or does not
@@ -343,7 +343,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/UserId"
     get:
-      operationId: auth.events.list
+      operationId: atc-auth.events.list
       summary: List a user's audit events
       description: >-
         Keyset-paginated, newest first. Note the pagination field is `nextBefore`, not
@@ -374,7 +374,7 @@ paths:
 
   /v1/auth/login:
     post:
-      operationId: auth.login
+      operationId: atc-auth.login
       summary: Log in with email and password
       description: >-
         Any valid API key may call this (no role gate — login is an end user's own action, not a
@@ -425,7 +425,7 @@ paths:
 
   /v1/auth/refresh:
     post:
-      operationId: auth.refresh
+      operationId: atc-auth.refresh
       summary: Rotate a refresh token
       description: >-
         A refresh token that has already been rotated (replayed) revokes the whole session
@@ -462,7 +462,7 @@ paths:
 
   /v1/auth/logout:
     post:
-      operationId: auth.logout
+      operationId: atc-auth.logout
       summary: Revoke the session owning a refresh token
       description: Idempotent — an unknown or already-revoked refresh token still returns 204.
       tags: [Authentication]
@@ -480,7 +480,7 @@ paths:
 
   /v1/auth/introspect:
     post:
-      operationId: auth.introspect
+      operationId: atc-auth.introspect
       summary: Validate an access token
       description: >-
         Never throws a domain error — an invalid, expired, or otherwise unusable token is reported
@@ -505,7 +505,7 @@ paths:
 
   /v1/auth/verify-email:
     post:
-      operationId: auth.emailVerification.verify
+      operationId: atc-auth.emailVerification.verify
       summary: Consume an email-verification token
       tags: [Email verification]
       x-stack-visibility: authenticated
@@ -526,7 +526,7 @@ paths:
 
   /v1/auth/verify-email/resend:
     post:
-      operationId: auth.emailVerification.resend
+      operationId: atc-auth.emailVerification.resend
       summary: Re-send the verification email
       description: >-
         Always `202` for a valid request, so the response never reveals whether an account
@@ -554,7 +554,7 @@ paths:
 
   /v1/auth/password/forgot:
     post:
-      operationId: auth.password.forgot
+      operationId: atc-auth.password.forgot
       summary: Request a password-reset email
       description: >-
         Always `202` for a valid request, so the response never reveals whether an account
@@ -580,7 +580,7 @@ paths:
 
   /v1/auth/password/reset:
     post:
-      operationId: auth.password.reset
+      operationId: atc-auth.password.reset
       summary: Reset a password with a reset token
       description: >-
         Revokes every session for the user and marks the email verified (proof of mailbox
@@ -608,7 +608,7 @@ paths:
 
   /v1/auth/password/change:
     post:
-      operationId: auth.password.change
+      operationId: atc-auth.password.change
       summary: Change the current password for the calling session
       description: >-
         Requires the end user's own access token in `X-Access-Token`, on top of the calling
@@ -1054,4 +1054,4 @@ components:
           type: array
           items: { type: string, enum: [jwks, email-verification, password-reset, refresh-tokens] }
         schemaVersion: { type: integer, description: "SQLite PRAGMA user_version." }
-        serviceCore: { type: string, description: "Installed @atc-web/service-core version." }
+        serviceCore: { type: string, description: "Installed @atc-web/atc-service-core version." }
