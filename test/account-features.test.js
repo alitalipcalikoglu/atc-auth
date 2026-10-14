@@ -91,3 +91,20 @@ test('personal data: export lists what is stored; anonymize erases the person bu
   await assert.rejects(t.service.login({ email: 'gdpr@example.com', password: GOOD_PASSWORD }, ctx), code('INVALID_CREDENTIALS'));
   assert.deepEqual(published.at(-1), ['auth.user.anonymized', { id: user.id }]);
 });
+
+test('every password check shares one lockout: email change and password change cannot be used to guess the password', async () => {
+  const t = await testAuthService({ LOGIN_MAX_FAILURES: '3', LOGIN_REQUIRES_VERIFIED_EMAIL: 'false' });
+  const { user } = await t.service.register({ email: 'g@example.com', password: GOOD_PASSWORD }, ctx);
+  const attacker = at('203.0.113.77');
+  const change = (/** @type {string} */ pw) => t.service.requestEmailChange({ email: 'g@example.com', password: pw, newEmail: 'z@example.com' }, attacker);
+  for (let i = 0; i < 3; i += 1) await assert.rejects(change('wrong wrong wrong'), code('INVALID_CREDENTIALS'));
+  await assert.rejects(change(GOOD_PASSWORD), code('ACCOUNT_LOCKED'), 'the right password is refused while the address is locked');
+  await assert.rejects(t.service.login({ email: 'g@example.com', password: GOOD_PASSWORD }, attacker), code('ACCOUNT_LOCKED'), 'sign-in shares the same lock');
+  await assert.rejects(t.service.changePassword({ userId: user.id, sessionId: 'x', currentPassword: GOOD_PASSWORD, newPassword: 'another long password!' }, attacker), code('ACCOUNT_LOCKED'));
+  assert.ok(t.events.forUser(user.id, { limit: 20 }).some((e) => e.type === 'email.change_failed'), 'failures are recorded as events');
+  const other = at('198.51.100.5');
+  const guess = (/** @type {string} */ pw) => t.service.changePassword({ userId: user.id, sessionId: 'x', currentPassword: pw, newPassword: 'another long password!' }, other);
+  for (let i = 0; i < 3; i += 1) await assert.rejects(guess('nope nope nope nope'), code('INVALID_CREDENTIALS'));
+  await assert.rejects(guess(GOOD_PASSWORD), code('ACCOUNT_LOCKED'), 'password change counts and locks too');
+  assert.equal(t.mailer.sent.filter((m) => m.kind === 'change').length, 0, 'no mail was sent to the attacker-chosen address');
+});

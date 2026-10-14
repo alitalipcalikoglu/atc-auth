@@ -6,7 +6,7 @@
  */
 export class AuditEvents {
   /** Event types recorded as failures. */
-  static FAILURES = new Set(['login.failed', 'password.change_failed', 'session.reuse_detected', 'account.locked']);
+  static FAILURES = new Set(['login.failed', 'password.change_failed', 'session.reuse_detected', 'account.locked', 'email.change_failed']);
 
   /**
    * @param {{ userId: string|null, type: string, ip: string|null, meta: object|null }} e

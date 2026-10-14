@@ -156,30 +156,10 @@ export class AuthService {
    */
   async login(input, ctx) {
     const now = this.now();
-    const user = this.users.byEmail(input.email);
+    const found = this.users.byEmail(input.email);
     // Hash even when the user is missing so response time does not reveal existence.
-    const ok = user ? await this.hasher.verify(input.password, user.password_hash) : await this.#burnHash(input.password);
-    if (!user) {
-      this.events.record({ type: 'login.failed', ip: ctx.ip, meta: { reason: 'unknown_email' } }, now);
-      throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
-    }
+    const user = await this.#verifyCredentials(found, input.password, ctx);
     const addr = ctx.ip ?? 'unknown';
-    const addressLock = this.guard.lockedUntil(user.id, addr, now);
-    const lockedUntil = Math.max(user.locked_until !== null && user.locked_until > now ? user.locked_until : 0, addressLock ?? 0);
-    if (lockedUntil > now) {
-      this.events.record({ userId: user.id, type: 'login.failed', ip: ctx.ip, meta: { reason: 'locked' } }, now);
-      throw new AuthError('ACCOUNT_LOCKED', 'too many failed attempts, try again later', { retryAfterSec: Math.ceil((lockedUntil - now) / 1000) });
-    }
-    if (!ok) {
-      this.db.transaction(() => {
-        const pair = this.guard.fail(user.id, addr, { maxFailures: this.options.loginMaxFailures, lockoutMs: this.options.lockoutMs }, now);
-        const total = this.users.recordLoginFailure(user.id, { maxFailures: this.options.loginMaxFailuresTotal, lockoutMs: this.options.lockoutMs, now });
-        this.events.record({ userId: user.id, type: 'login.failed', ip: ctx.ip, meta: { reason: 'bad_password', failures: pair.failures } }, now);
-        if (pair.lockedUntil) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'address' } }, now);
-        else if (total.locked_until) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'account' } }, now);
-      });
-      throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
-    }
     if (user.status === 'disabled') {
       this.events.record({ userId: user.id, type: 'login.failed', ip: ctx.ip, meta: { reason: 'disabled' } }, now);
       throw new AuthError('ACCOUNT_DISABLED', 'account is disabled');
@@ -194,8 +174,6 @@ export class AuthService {
     const rehash = this.hasher.needsRehash(user.password_hash) ? await this.hasher.hash(input.password) : null;
     const device = createHash('sha256').update(ctx.userAgent ?? '').digest('hex').slice(0, 24);
     const { session, refreshToken, newDevice } = this.db.transaction(() => {
-      this.users.recordLoginSuccess(user.id, now);
-      this.guard.clear(user.id, addr);
       if (rehash) this.users.setPassword(user.id, rehash, now);
       const created = this.sessions.create({ userId: user.id, ttlMs: this.options.refreshTtlMs, ip: ctx.ip, userAgent: ctx.userAgent }, now);
       this.events.record({ userId: user.id, type: 'login.succeeded', ip: ctx.ip, meta: { sessionId: created.session.id } }, now);
@@ -385,10 +363,7 @@ export class AuthService {
    */
   async changePassword(input, ctx) {
     const user = this.#requireUser(input.userId);
-    if (!(await this.hasher.verify(input.currentPassword, user.password_hash))) {
-      this.events.record({ userId: user.id, type: 'password.change_failed', ip: ctx.ip }, this.now());
-      throw new AuthError('INVALID_CREDENTIALS', 'current password is incorrect');
-    }
+    await this.#verifyCredentials(user, input.currentPassword, ctx, { failedEvent: 'password.change_failed' });
     this.#assertPasswordAcceptable(input.newPassword, user.email);
     const hash = await this.hasher.hash(input.newPassword);
     const now = this.now();
@@ -410,9 +385,9 @@ export class AuthService {
    * @param {Ctx} ctx
    */
   async requestEmailChange(input, ctx) {
-    const user = this.users.byEmail(input.email);
-    const ok = user ? await this.hasher.verify(input.password, user.password_hash) : await this.#burnHash(input.password);
-    if (!user || !ok || user.status === 'disabled') throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
+    const found = this.users.byEmail(input.email);
+    const user = await this.#verifyCredentials(found, input.password, ctx, { failedEvent: 'email.change_failed' });
+    if (user.status === 'disabled') throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
     const next = UserStore.normalizeEmail(input.newEmail);
     if (next === user.email) throw new AuthError('INVALID_ARGUMENT', 'that is already the email address of this account');
     if (this.users.byEmail(next) || this.#resendThrottled(user.id, 'change_email')) return;
@@ -592,6 +567,46 @@ export class AuthService {
   #assertPasswordAcceptable(password, email) {
     const problems = this.policy.problems(password, { email });
     if (problems.length) throw new AuthError('WEAK_PASSWORD', `password ${problems.join('; ')}`, { problems });
+  }
+
+  /**
+   * The one place a password is checked (sign-in, email change, password change): constant work for
+   * unknown accounts, lockout per account and client address (with the account-wide backstop), every
+   * failure counted and recorded, a success clears the counters. Throws `ACCOUNT_LOCKED` while locked,
+   * `INVALID_CREDENTIALS` otherwise; never reveals which part was wrong.
+   * @param {UserRow|undefined} user
+   * @param {string} password
+   * @param {Ctx} ctx
+   * @param {{ failedEvent?: string }} [o]
+   * @returns {Promise<UserRow>}
+   */
+  async #verifyCredentials(user, password, ctx, { failedEvent = 'login.failed' } = {}) {
+    const now = this.now();
+    const addr = ctx.ip ?? 'unknown';
+    const ok = user ? await this.hasher.verify(password, user.password_hash) : await this.#burnHash(password);
+    if (!user) {
+      this.events.record({ type: failedEvent, ip: ctx.ip, meta: { reason: 'unknown_email' } }, now);
+      throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
+    }
+    const addressLock = this.guard.lockedUntil(user.id, addr, now);
+    const lockedUntil = Math.max(user.locked_until !== null && user.locked_until > now ? user.locked_until : 0, addressLock ?? 0);
+    if (lockedUntil > now) {
+      this.events.record({ userId: user.id, type: failedEvent, ip: ctx.ip, meta: { reason: 'locked' } }, now);
+      throw new AuthError('ACCOUNT_LOCKED', 'too many failed attempts, try again later', { retryAfterSec: Math.ceil((lockedUntil - now) / 1000) });
+    }
+    if (!ok) {
+      this.db.transaction(() => {
+        const pair = this.guard.fail(user.id, addr, { maxFailures: this.options.loginMaxFailures, lockoutMs: this.options.lockoutMs }, now);
+        const total = this.users.recordLoginFailure(user.id, { maxFailures: this.options.loginMaxFailuresTotal, lockoutMs: this.options.lockoutMs, now });
+        this.events.record({ userId: user.id, type: failedEvent, ip: ctx.ip, meta: { reason: 'bad_password', failures: pair.failures } }, now);
+        if (pair.lockedUntil) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'address' } }, now);
+        else if (total.locked_until) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'account' } }, now);
+      });
+      throw new AuthError('INVALID_CREDENTIALS', 'email or password is incorrect');
+    }
+    this.users.recordLoginSuccess(user.id, now);
+    this.guard.clear(user.id, addr);
+    return user;
   }
 
   /** @param {string} id */
