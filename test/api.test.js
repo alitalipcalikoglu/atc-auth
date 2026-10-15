@@ -28,7 +28,7 @@ test('GET /v1/info reports service identity and capabilities', async () => {
   assert.equal(body.service, 'atc-auth');
   assert.equal(body.version, '1.0.0');
   assert.equal(body.apiVersion, 'v1');
-  assert.deepEqual(body.capabilities, ['jwks', 'email-verification', 'password-reset', 'refresh-tokens']);
+  assert.deepEqual(body.capabilities, ['jwks', 'email-verification', 'password-reset', 'refresh-tokens', 'mfa-totp', 'password-history']);
   assert.equal(typeof body.schemaVersion, 'number');
   assert.equal(typeof body.serviceCore, 'string');
 });
@@ -226,4 +226,34 @@ test('Stage 4: a read-only key cannot register, update or delete a user, but can
 
   res = await app.inject({ method: 'GET', url: `/v1/users/${user.id}`, headers: readAuth });
   assert.equal(res.statusCode, 200, 'reading is still allowed');
+});
+
+test('MFA over HTTP: setup and enable with X-Access-Token, MFA_REQUIRED at login, second step, admin reset', async () => {
+  const email = 'mfa-http@example.com';
+  await call('POST', '/v1/users', { email, password: GOOD_PASSWORD });
+  t.users.markVerified(/** @type {any} */ (t.users.byEmail(email)).id, Date.now());
+  let res = await call('POST', '/v1/auth/login', { email, password: GOOD_PASSWORD });
+  const access = { 'x-access-token': res.json().tokens.accessToken };
+  assert.equal((await call('POST', '/v1/auth/mfa/setup')).statusCode, 401, 'needs the end user token');
+  res = await call('POST', '/v1/auth/mfa/setup', undefined, access);
+  assert.equal(res.statusCode, 200);
+  const { secret } = res.json();
+  const { Totp } = await import('../src/crypto/totp.js');
+  const now = (/** @type {number} */ d = 0) => Totp.code(secret, Math.floor(t.clock.now / 30_000) + d);
+  res = await call('POST', '/v1/auth/mfa/enable', { code: now() }, access);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.json().recoveryCodes.length, 10);
+  res = await call('POST', '/v1/auth/login', { email, password: GOOD_PASSWORD });
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.json().error.code, 'MFA_REQUIRED');
+  const { mfaToken } = res.json().error.details;
+  res = await call('POST', '/v1/auth/login/mfa', { mfaToken, code: '000000' });
+  assert.equal(res.json().error.code, 'INVALID_MFA_CODE');
+  res = await call('POST', '/v1/auth/login/mfa', { mfaToken, code: now(1) });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(res.json().user.mfaEnabled, true);
+  const id = res.json().user.id;
+  assert.equal((await call('DELETE', `/v1/users/${id}/mfa`, undefined, { authorization: `Bearer ${READ_KEY}` })).statusCode, 403);
+  assert.equal((await call('DELETE', `/v1/users/${id}/mfa`)).statusCode, 204);
+  assert.equal((await call('GET', `/v1/users/${id}`)).json().user.mfaEnabled, false);
 });

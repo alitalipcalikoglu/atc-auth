@@ -15,9 +15,11 @@ export class Maintenance {
    * @param {import('./types.js').Logger} deps.log
    * @param {{ eventRetentionDays: number }} deps.options
    * @param {import('./store/guard-store.js').GuardStore} [deps.guard]
+   * @param {import('./store/mfa-store.js').MfaStore} [deps.mfa]
    */
-  constructor({ sessions, tokens, events, log, options, guard }) {
+  constructor({ sessions, tokens, events, log, options, guard, mfa }) {
     this.guard = guard;
+    this.mfa = mfa;
     this.sessions = sessions;
     this.tokens = tokens;
     this.events = events;
@@ -46,6 +48,7 @@ export class Maintenance {
         sessions: this.sessions.purge(now, now - Maintenance.REVOKED_SESSION_KEEP_MS),
         tokens: this.tokens.purge(now, now - Maintenance.USED_TOKEN_KEEP_MS),
         guard: this.guard?.purge(now) ?? 0,
+        mfaChallenges: this.mfa?.purgeChallenges(now) ?? 0,
         events: this.events.purge(now - this.options.eventRetentionDays * 86_400_000),
       };
       if (result.sessions || result.tokens || result.events || result.guard) this.log.info(result, 'maintenance purged rows');

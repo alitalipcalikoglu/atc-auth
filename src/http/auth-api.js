@@ -142,7 +142,7 @@ export class AuthApi {
     registerInfo(app, {
       service: 'atc-auth',
       version: this.version,
-      capabilities: ['jwks', 'email-verification', 'password-reset', 'refresh-tokens'],
+      capabilities: ['jwks', 'email-verification', 'password-reset', 'refresh-tokens', 'mfa-totp', 'password-history'],
       schemaVersion: this.db.schemaVersion,
     });
     app.get('/.well-known/jwks.json', { logLevel: 'warn' }, async (_request, reply) => {
@@ -241,6 +241,11 @@ export class AuthApi {
       return { user: Views.user(user), tokens: Views.tokens(tokens) };
     });
 
+    api.post('/auth/login/mfa', { schema: { body: Schemas.loginMfa } }, async (request) => {
+      const { user, tokens } = await s.loginMfa(/** @type {{ mfaToken: string, code: string }} */ (request.body), ctx(request));
+      return { user: Views.user(user), tokens: Views.tokens(tokens) };
+    });
+
     api.post('/auth/refresh', { schema: { body: Schemas.refresh } }, async (request) => {
       const { user, tokens } = await s.refresh(/** @type {{ refreshToken: string }} */ (request.body).refreshToken, ctx(request));
       return { user: Views.user(user), tokens: Views.tokens(tokens) };
@@ -285,13 +290,41 @@ export class AuthApi {
 
     // The end user's access token travels in X-Access-Token; the API key stays in Authorization.
     api.post('/auth/password/change', { schema: { body: Schemas.changePassword } }, async (request, reply) => {
-      const header = request.headers['x-access-token'];
-      const intro = typeof header === 'string' && header ? await s.introspect(header) : { active: false, reason: 'MISSING' };
-      if (!intro.active || !intro.claims) throw new AuthError('INVALID_TOKEN', `access token ${intro.reason === 'MISSING' ? 'missing' : 'not active'}`);
+      const claims = await this.#endUser(request);
       const body = /** @type {{ currentPassword: string, newPassword: string }} */ (request.body);
-      await s.changePassword({ userId: intro.claims.sub, sessionId: intro.claims.sid, ...body }, ctx(request));
+      await s.changePassword({ userId: claims.sub, sessionId: claims.sid, ...body }, ctx(request));
       return reply.code(204).send();
     });
+
+    // ---- the end user's own MFA (X-Access-Token)
+    api.post('/auth/mfa/setup', async (request) => s.mfaSetup((await this.#endUser(request)).sub, ctx(request)));
+    api.post('/auth/mfa/enable', { schema: { body: Schemas.codeOnly } }, async (request) => ({
+      recoveryCodes: await s.mfaEnable((await this.#endUser(request)).sub, /** @type {{ code: string }} */ (request.body).code, ctx(request)),
+    }));
+    api.post('/auth/mfa/disable', { schema: { body: Schemas.disableMfa } }, async (request, reply) => {
+      await s.mfaDisable((await this.#endUser(request)).sub, /** @type {{ password: string, code: string }} */ (request.body), ctx(request));
+      return reply.code(204).send();
+    });
+    api.post('/auth/mfa/recovery-codes', { schema: { body: Schemas.codeOnly } }, async (request) => ({
+      recoveryCodes: s.mfaRecoveryCodes((await this.#endUser(request)).sub, /** @type {{ code: string }} */ (request.body).code, ctx(request)),
+    }));
+
+    // ---- administration of a user's MFA
+    api.delete('/users/:id/mfa', { schema: { params: Schemas.idParams }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
+      await s.adminResetMfa(/** @type {{ id: string }} */ (request.params).id, ctx(request));
+      return reply.code(204).send();
+    });
+  }
+
+  /**
+   * The signed-in end user behind `X-Access-Token` (the API key stays in Authorization).
+   * @param {FastifyRequest} request
+   */
+  async #endUser(request) {
+    const header = request.headers['x-access-token'];
+    const intro = typeof header === 'string' && header ? await this.service.introspect(header) : { active: false, reason: 'MISSING' };
+    if (!intro.active || !intro.claims) throw new AuthError('INVALID_TOKEN', `access token ${intro.reason === 'MISSING' ? 'missing' : 'not active'}`);
+    return intro.claims;
   }
 
   /** @param {FastifyInstance} ops */

@@ -7,6 +7,9 @@ import { JwtSigner } from './crypto/jwt.js';
 import { PasswordHasher } from './crypto/password.js';
 import { Database } from './db.js';
 import { AuthService } from './domain/auth-service.js';
+import { BreachCheck } from './domain/breach-check.js';
+import { MfaStore } from './store/mfa-store.js';
+import { SecretBox } from '@atc-web/atc-service-core/secrets';
 import { NotifyMailer } from './domain/mailer.js';
 import { PasswordPolicy } from './domain/password-policy.js';
 import { AuthApi } from './http/auth-api.js';
@@ -77,8 +80,11 @@ export class Application {
   async start() {
     const { config } = this;
     await this.jwt.init();
+    const mfa = new MfaStore(this.db);
     const service = new AuthService({
       db: this.db, users: this.users, sessions: this.sessions, tokens: this.tokens, events: this.events, guard: this.guard, publisher: this.publisher,
+      mfa, mfaBox: config.mfaSecretsKey ? new SecretBox(config.mfaSecretsKey) : null,
+      breach: config.passwordBreachCheck ? new BreachCheck({ url: config.passwordBreachUrl, timeoutMs: config.passwordBreachTimeoutMs, log: { warn: (o, m) => this.app?.log.warn(o, m) } }) : null,
       hasher: new PasswordHasher({ logN: config.scryptLogN }),
       policy: new PasswordPolicy({ minLength: config.passwordMinLength }),
       jwt: this.jwt, mailer: this.mailer, log: /** @type {any} */ (console),
@@ -96,6 +102,9 @@ export class Application {
         resendCooldownMs: config.resendCooldownSec * 1000,
         verifyUrlTemplate: config.verifyUrlTemplate,
         resetUrlTemplate: config.resetUrlTemplate,
+        passwordHistory: config.passwordHistory,
+        mfaChallengeTtlMs: config.mfaChallengeTtlSec * 1000,
+        mfaIssuer: config.appName,
       },
     });
     const { audit, events } = this;
@@ -103,7 +112,7 @@ export class Application {
     const app = await api.build();
     this.app = app;
     service.log = app.log.child({ component: 'atc-auth' });
-    this.maintenance = new Maintenance({ sessions: this.sessions, tokens: this.tokens, events: this.events, guard: this.guard, log: app.log.child({ component: 'maintenance' }), options: { eventRetentionDays: config.eventRetentionDays } });
+    this.maintenance = new Maintenance({ sessions: this.sessions, tokens: this.tokens, events: this.events, guard: this.guard, mfa, log: app.log.child({ component: 'maintenance' }), options: { eventRetentionDays: config.eventRetentionDays } });
     const { shutdown } = Lifecycle.install({
       forceExitMs: 30_000,
       log: app.log,

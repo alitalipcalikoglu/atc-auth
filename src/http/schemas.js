@@ -45,6 +45,10 @@ export class Schemas {
   static resetPassword = Schemas.body(['token', 'password'], { token: Schemas.opaqueToken, password: Schemas.password });
   static changePassword = Schemas.body(['currentPassword', 'newPassword'], { currentPassword: Schemas.password, newPassword: Schemas.password });
   static changeEmail = Schemas.body(['email', 'password', 'newEmail'], { email: Schemas.email, password: Schemas.password, newEmail: Schemas.email });
+  static mfaCode = { type: 'string', minLength: 6, maxLength: 16 };
+  static loginMfa = Schemas.body(['mfaToken', 'code'], { mfaToken: Schemas.opaqueToken, code: Schemas.mfaCode });
+  static codeOnly = Schemas.body(['code'], { code: Schemas.mfaCode });
+  static disableMfa = Schemas.body(['password', 'code'], { password: Schemas.password, code: Schemas.mfaCode });
   static patchUser = {
     type: 'object', additionalProperties: false, minProperties: 1,
     properties: { name: Schemas.name, email: Schemas.email, status: { type: 'string', enum: ['active', 'disabled'] } },

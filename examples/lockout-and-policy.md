@@ -42,6 +42,12 @@ All problems are returned at once:
 
 Passwords are NFKC-normalised before hashing, so `ﬁsh` and `fish` are the same password.
 
+### Reuse and breached passwords
+
+On reset and change (not registration, there is no history yet) the new password must differ from the current one and from the ones before it, `PASSWORD_HISTORY` in total (default 5, `0` turns it off): `must not be one of your last 5 passwords`. The check runs only after the fixed rules pass and costs one hash verification per remembered password.
+
+With `PASSWORD_BREACH_CHECK=true`, every new password (registration included) is also looked up in Have I Been Pwned: the service sends the first five hex characters of its SHA-1 to `PASSWORD_BREACH_URL/range/<prefix>` with padding on, compares the suffixes locally and rejects a hit with `appears in known data breaches; choose another`. If the lookup fails or times out (`PASSWORD_BREACH_TIMEOUT_MS`, default 2000) the password is accepted and a warning is logged, so an outage never blocks sign-ups.
+
 ## Hash cost
 
 scrypt with `N = 2^SCRYPT_LOG_N` (default 15, about 100 ms per check). Raising the value later is safe: existing users are re-hashed transparently on their next successful login.

@@ -52,6 +52,12 @@
  * @property {string} resetUrlTemplate      Contains `{token}`.
  * @property {number} eventRetentionDays
  * @property {number} auditOutboxRetentionDays  Sent outbox rows older than this are purged.
+ * @property {Buffer|null} mfaSecretsKey  Seals end-user TOTP secrets; null = MFA unavailable.
+ * @property {number} mfaChallengeTtlSec
+ * @property {number} passwordHistory       Earlier passwords a new one may not repeat (0 = off).
+ * @property {boolean} passwordBreachCheck
+ * @property {string} passwordBreachUrl
+ * @property {number} passwordBreachTimeoutMs
  */
 
 /** @typedef {import('./config.js').Config} Config */
@@ -71,6 +77,7 @@
  * @property {number} password_changed_at
  * @property {number} created_at
  * @property {number} updated_at
+ * @property {number|null} mfa_enabled_at  From `user_mfa`; null while MFA is off or only being set up.
  */
 
 /**

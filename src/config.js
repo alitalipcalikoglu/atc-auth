@@ -50,6 +50,12 @@ export class Config {
     this.changeEmailUrlTemplate = v.changeEmailUrlTemplate;
     this.eventRetentionDays = v.eventRetentionDays;
     this.auditOutboxRetentionDays = v.auditOutboxRetentionDays;
+    this.mfaSecretsKey = v.mfaSecretsKey;
+    this.mfaChallengeTtlSec = v.mfaChallengeTtlSec;
+    this.passwordHistory = v.passwordHistory;
+    this.passwordBreachCheck = v.passwordBreachCheck;
+    this.passwordBreachUrl = v.passwordBreachUrl;
+    this.passwordBreachTimeoutMs = v.passwordBreachTimeoutMs;
     Object.freeze(this);
   }
 
@@ -115,7 +121,26 @@ export class Config {
       resetUrlTemplate: Config.#urlTemplate(r.required('RESET_URL_TEMPLATE'), 'RESET_URL_TEMPLATE'),
       eventRetentionDays: r.integer('EVENT_RETENTION_DAYS', 90, { min: 1 }),
       auditOutboxRetentionDays: r.integer('AUDIT_OUTBOX_RETENTION_DAYS', 7, { min: 1 }),
+      mfaSecretsKey: Config.#hexKey(r.optional('MFA_SECRETS_KEY'), 'MFA_SECRETS_KEY'),
+      mfaChallengeTtlSec: r.integer('MFA_CHALLENGE_TTL_SEC', 300, { min: 30, max: 1_800 }),
+      passwordHistory: r.integer('PASSWORD_HISTORY', 5, { min: 0, max: 24 }),
+      passwordBreachCheck: r.boolean('PASSWORD_BREACH_CHECK', false),
+      passwordBreachUrl: Config.#origin(r.optional('PASSWORD_BREACH_URL') || 'https://api.pwnedpasswords.com', 'PASSWORD_BREACH_URL'),
+      passwordBreachTimeoutMs: r.integer('PASSWORD_BREACH_TIMEOUT_MS', 2_000, { min: 200, max: 10_000 }),
     });
+  }
+
+  /** 32-byte key as 64 hex characters, or null when unset. @param {string} value @param {string} name */
+  static #hexKey(value, name) {
+    if (!value) return null;
+    if (!/^[0-9a-fA-F]{64}$/.test(value)) throw new ConfigError(`${name} must be 64 hex characters (openssl rand -hex 32)`);
+    return Buffer.from(value, 'hex');
+  }
+
+  /** @param {string} value @param {string} name */
+  static #origin(value, name) {
+    if (!/^https?:\/\/[^\s/]+$/.test(value.replace(/\/+$/, ''))) throw new ConfigError(`${name} must be an origin like https://api.pwnedpasswords.com`);
+    return value.replace(/\/+$/, '');
   }
 
   /**

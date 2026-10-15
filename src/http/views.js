@@ -18,6 +18,8 @@ export class Views {
       emailVerifiedAt: iso(u.email_verified_at),
       lockedUntil: u.locked_until !== null && u.locked_until > Date.now() ? iso(u.locked_until) : null,
       passwordChangedAt: iso(u.password_changed_at),
+      mfaEnabled: u.mfa_enabled_at !== null,
+      mfaEnabledAt: iso(u.mfa_enabled_at),
       createdAt: iso(u.created_at),
       updatedAt: iso(u.updated_at),
     };

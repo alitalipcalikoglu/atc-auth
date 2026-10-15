@@ -34,6 +34,7 @@ export function fullEnv() {
     RESET_URL_TEMPLATE: 'https://shop.test.local/reset?token={token}',
     DB_PATH: ':memory:',
     SCRYPT_LOG_N: '14',
+    MFA_SECRETS_KEY: 'ab'.repeat(32),
     LOG_LEVEL: 'silent',
   };
 }
@@ -116,8 +117,9 @@ export class FakeMailer {
  * Fully wired AuthService on an in-memory database with a fake mailer and controllable clock.
  * @param {Record<string, string>} [envOverrides]
  * @param {any} [publisher]
+ * @param {{ breach?: { count: (password: string) => Promise<number|null> } }} [extra]
  */
-export async function testAuthService(envOverrides = {}, publisher = undefined) {
+export async function testAuthService(envOverrides = {}, publisher = undefined, extra = {}) {
   const { AuthService } = await import('../src/domain/auth-service.js');
   const { PasswordPolicy } = await import('../src/domain/password-policy.js');
   const { PasswordHasher } = await import('../src/crypto/password.js');
@@ -126,6 +128,7 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
   const { ActionTokenStore } = await import('../src/store/action-token-store.js');
   const { EventStore } = await import('../src/store/event-store.js');
   const { GuardStore } = await import('../src/store/guard-store.js');
+  const { SecretBox } = await import('@atc-web/atc-service-core/secrets');
   const config = testConfig(envOverrides);
   const db = testDb();
   const { signer } = await testSigner({ ttlSec: config.accessTokenTtlSec });
@@ -138,6 +141,7 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
   const guard = new GuardStore(db);
   const service = new AuthService({
     db, users, sessions, tokens, events, guard, publisher,
+    mfaBox: config.mfaSecretsKey ? new SecretBox(config.mfaSecretsKey) : null, breach: extra.breach ?? null,
     hasher: new PasswordHasher({ logN: config.scryptLogN }),
     policy: new PasswordPolicy({ minLength: config.passwordMinLength }),
     jwt: signer, mailer, log: silentLog,
@@ -155,6 +159,9 @@ export async function testAuthService(envOverrides = {}, publisher = undefined) 
       resendCooldownMs: config.resendCooldownSec * 1000,
       verifyUrlTemplate: config.verifyUrlTemplate,
       resetUrlTemplate: config.resetUrlTemplate,
+      passwordHistory: config.passwordHistory,
+      mfaChallengeTtlMs: config.mfaChallengeTtlSec * 1000,
+      mfaIssuer: config.appName,
     },
     now: () => clock.now,
   });

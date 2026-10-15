@@ -110,5 +110,36 @@ export class Database extends CoreDatabase {
       PRIMARY KEY (user_id, device)
     );
     `,
+    `
+    -- End-user MFA (TOTP + one-time recovery codes, a short-lived challenge between the password
+    -- and the code at sign-in) and the password history that blocks reusing recent passwords.
+    CREATE TABLE user_mfa (
+      user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      secret      TEXT NOT NULL,
+      enabled_at  INTEGER,
+      last_step   INTEGER,
+      created_at  INTEGER NOT NULL
+    );
+    CREATE TABLE mfa_recovery_codes (
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      code_hash  TEXT NOT NULL,
+      used_at    INTEGER,
+      PRIMARY KEY (user_id, code_hash)
+    );
+    CREATE TABLE mfa_challenges (
+      token_hash  TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at  INTEGER NOT NULL,
+      attempts    INTEGER NOT NULL DEFAULT 0,
+      created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX mfa_challenges_expiry ON mfa_challenges (expires_at);
+    CREATE TABLE password_history (
+      user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      hash     TEXT NOT NULL,
+      at       INTEGER NOT NULL
+    );
+    CREATE INDEX password_history_user ON password_history (user_id, at DESC);
+    `,
   ];
 }

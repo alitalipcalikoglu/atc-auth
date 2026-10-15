@@ -9,6 +9,7 @@ Scenario-driven walkthroughs of every feature. Requests to `/v1/*` need `Authori
 | [Refresh, logout and reuse detection](refresh-and-logout.md) | Rotating refresh tokens, what happens when a stolen token is replayed |
 | [Forgot and reset password](password-reset.md) | Reset link by email, single-use token, sessions revoked |
 | [Change password](password-change.md) | Authenticated change with `X-Access-Token`, keeps the current session |
+| [Two-step sign-in (MFA)](mfa.md) | TOTP enrolment, recovery codes, `MFA_REQUIRED` and the second step, turning off, admin reset |
 | [Lockout and password policy](lockout-and-policy.md) | Brute-force lockout, `Retry-After`, what passwords are rejected |
 | [User administration](user-administration.md) | List, look up, disable, delete users; sessions; audit log |
 | [Signing key rotation](key-rotation.md) | Rotate the ES256 key pair without logging anyone out |

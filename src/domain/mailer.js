@@ -39,7 +39,7 @@ export class Mailer {
   /**
    * A plain security notice (new sign-in device, address changed).
    * @abstract
-   * @param {{ to: string, name: string|null, kind: 'new_device'|'email_changed', details: Record<string, string> }} m
+   * @param {{ to: string, name: string|null, kind: 'new_device'|'email_changed'|'mfa_enabled'|'mfa_disabled'|'mfa_reset', details: Record<string, string> }} m
    * @returns {Promise<void>}
    */
   async sendNotice(m) {
@@ -116,19 +116,37 @@ export class NotifyMailer extends Mailer {
     });
   }
 
-  /** @param {{ to: string, name: string|null, kind: 'new_device'|'email_changed', details: Record<string, string> }} m */
+  /** @param {{ to: string, name: string|null, kind: 'new_device'|'email_changed'|'mfa_enabled'|'mfa_disabled'|'mfa_reset', details: Record<string, string> }} m */
   async sendNotice(m) {
     const tr = this.locale === 'tr';
     const d = m.details;
-    const lines = m.kind === 'new_device'
-      ? [tr ? 'Hesabınıza daha önce kullanılmamış bir cihazdan giriş yapıldı.' : 'Your account was signed in to from a device we have not seen before.', ...(d.ip ? [`IP: ${d.ip}`] : []), ...(d.userAgent ? [`${tr ? 'Cihaz' : 'Device'}: ${d.userAgent}`] : []), tr ? 'Siz değilseniz parolanızı hemen değiştirin.' : 'If this was not you, change your password now.']
-      : [tr ? 'Hesabınızın e-posta adresi değiştirildi. Bu adres artık bildirim almayacak.' : 'The email address of your account was changed. This address will no longer receive messages.', ...(d.ip ? [`IP: ${d.ip}`] : []), tr ? 'Siz yapmadıysanız hemen destekle iletişime geçin.' : 'If you did not do this, contact support immediately.'];
-    await this.#send('generic', m.to, {
-      locale: this.locale, appName: this.appName,
-      subject: m.kind === 'new_device' ? (tr ? `${this.appName}: yeni cihazdan giriş` : `${this.appName}: new sign-in`) : (tr ? `${this.appName}: e-posta adresi değişti` : `${this.appName}: email address changed`),
-      title: m.kind === 'new_device' ? (tr ? 'Yeni cihazdan giriş' : 'New sign-in') : (tr ? 'E-posta adresi değişti' : 'Email address changed'),
-      paragraphs: lines,
-    });
+    const ip = d.ip ? [`IP: ${d.ip}`] : [];
+    const notYou = tr ? 'Siz yapmadıysanız hemen destekle iletişime geçin.' : 'If you did not do this, contact support immediately.';
+    /** @type {Record<string, { subject: string, title: string, paragraphs: string[] }>} */
+    const texts = {
+      new_device: {
+        subject: tr ? `${this.appName}: yeni cihazdan giriş` : `${this.appName}: new sign-in`, title: tr ? 'Yeni cihazdan giriş' : 'New sign-in',
+        paragraphs: [tr ? 'Hesabınıza daha önce kullanılmamış bir cihazdan giriş yapıldı.' : 'Your account was signed in to from a device we have not seen before.', ...ip, ...(d.userAgent ? [`${tr ? 'Cihaz' : 'Device'}: ${d.userAgent}`] : []), tr ? 'Siz değilseniz parolanızı hemen değiştirin.' : 'If this was not you, change your password now.'],
+      },
+      email_changed: {
+        subject: tr ? `${this.appName}: e-posta adresi değişti` : `${this.appName}: email address changed`, title: tr ? 'E-posta adresi değişti' : 'Email address changed',
+        paragraphs: [tr ? 'Hesabınızın e-posta adresi değiştirildi. Bu adres artık bildirim almayacak.' : 'The email address of your account was changed. This address will no longer receive messages.', ...ip, notYou],
+      },
+      mfa_enabled: {
+        subject: tr ? `${this.appName}: iki adımlı doğrulama açıldı` : `${this.appName}: two-step verification on`, title: tr ? 'İki adımlı doğrulama açıldı' : 'Two-step verification is on',
+        paragraphs: [tr ? 'Hesabınızda iki adımlı doğrulama açıldı. Kurtarma kodlarınızı güvenli bir yerde saklayın.' : 'Two-step verification was turned on for your account. Keep your recovery codes somewhere safe.', ...ip, notYou],
+      },
+      mfa_disabled: {
+        subject: tr ? `${this.appName}: iki adımlı doğrulama kapatıldı` : `${this.appName}: two-step verification off`, title: tr ? 'İki adımlı doğrulama kapatıldı' : 'Two-step verification is off',
+        paragraphs: [tr ? 'Hesabınızda iki adımlı doğrulama kapatıldı.' : 'Two-step verification was turned off for your account.', ...ip, notYou],
+      },
+      mfa_reset: {
+        subject: tr ? `${this.appName}: iki adımlı doğrulama sıfırlandı` : `${this.appName}: two-step verification reset`, title: tr ? 'İki adımlı doğrulama sıfırlandı' : 'Two-step verification was reset',
+        paragraphs: [tr ? 'Bir yönetici hesabınızdaki iki adımlı doğrulamayı kaldırdı. Giriş yaptıktan sonra yeniden açabilirsiniz.' : 'An administrator removed two-step verification from your account. You can turn it on again after signing in.', notYou],
+      },
+    };
+    const t = texts[m.kind];
+    await this.#send('generic', m.to, { locale: this.locale, appName: this.appName, subject: t.subject, title: t.title, paragraphs: t.paragraphs });
   }
 
   async verify() {

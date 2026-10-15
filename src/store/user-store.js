@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 
 /** Persistence for the `users` table. Emails are stored lower-cased and trimmed. */
 export class UserStore {
-  static COLUMNS = 'id, email, name, password_hash, status, email_verified_at, failed_logins, locked_until, password_changed_at, created_at, updated_at';
+  static COLUMNS = 'id, email, name, password_hash, status, email_verified_at, failed_logins, locked_until, password_changed_at, created_at, updated_at, (SELECT enabled_at FROM user_mfa WHERE user_id = users.id) AS mfa_enabled_at';
 
   /** @param {Database} db */
   constructor(db) {
