@@ -85,8 +85,8 @@ export class AuthApi {
     app.decorateRequest('apiKeyRole', undefined);
     app.decorateRequest('apiKeyScopes', null);
     app.setErrorHandler(this.#errorHandler);
-    // /v1/auth/* carries passwords, codes and tokens: never stored for replay.
-    Idempotency.register(app, { raw: this.db.raw, skip: (r) => r.url.startsWith('/v1/auth/') });
+    // Opt-in per route: only admin create-style routes that answer without secrets (never /v1/auth/*, MFA, tokens).
+    Idempotency.register(app, { raw: this.db.raw });
     app.setNotFoundHandler((_request, reply) => {
       reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'route not found' } });
     });
@@ -167,7 +167,7 @@ export class AuthApi {
     const ctx = AuthApi.ctx;
 
     // ---- users (administration by the calling backend)
-    api.post('/users', { schema: { body: Schemas.register }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
+    api.post('/users', { config: { idempotent: true }, schema: { body: Schemas.register }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
       const body = /** @type {{ email: string, password: string, name?: string|null }} */ (request.body);
       const { user, verificationEmailSent } = await s.register(body, ctx(request));
       reply.header('location', `/v1/users/${user.id}`);
@@ -204,7 +204,7 @@ export class AuthApi {
 
     api.get('/users/:id/export', { schema: { params: Schemas.idParams } }, async (request) => s.exportUser(/** @type {{ id: string }} */ (request.params).id));
 
-    api.post('/users/:id/anonymize', { schema: { params: Schemas.idParams }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
+    api.post('/users/:id/anonymize', { config: { idempotent: true }, schema: { params: Schemas.idParams }, preHandler: ApiKeyAuth.require('write') }, async (request, reply) => {
       await s.anonymize(/** @type {{ id: string }} */ (request.params).id, ctx(request));
       return reply.code(204).send();
     });

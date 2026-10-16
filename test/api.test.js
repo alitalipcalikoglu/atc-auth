@@ -258,14 +258,24 @@ test('MFA over HTTP: setup and enable with X-Access-Token, MFA_REQUIRED at login
   assert.equal((await call('GET', `/v1/users/${id}`)).json().user.mfaEnabled, false);
 });
 
-test('Idempotency-Key replays user creation; credential flows are never stored', async () => {
-  const body = { email: 'idem@example.com', password: 'Str0ng-Passw0rd!x' };
+test('Idempotency-Key: opt-in on admin create routes only; MFA secrets are never cached; identities never share replays', async () => {
+  const body = { email: 'idem@example.com', password: GOOD_PASSWORD };
   const first = await call('POST', '/v1/users', body, { 'idempotency-key': 'create-idem-1' });
   const again = await call('POST', '/v1/users', body, { 'idempotency-key': 'create-idem-1' });
   assert.equal(first.statusCode, 201, first.body);
   assert.deepEqual([again.statusCode, again.headers['idempotent-replayed'], again.json().user.id], [201, 'true', first.json().user.id]);
   assert.match(first.json().user.id, /^usr_[0-9a-z]{6,12}[0-9a-f]{16}$/);
-  await call('POST', '/v1/auth/login', body, { 'idempotency-key': 'login-idem-1' });
-  const stored = /** @type {any} */ (t.db.raw.prepare("SELECT COUNT(*) AS n FROM service_idempotency WHERE idem_key = 'login-idem-1'").get());
+  const other = await call('POST', '/v1/users', body, { 'idempotency-key': 'create-idem-1', 'x-actor': 'someone-else' });
+  assert.equal(other.headers['idempotent-replayed'], undefined, 'another identity is not served the stored answer');
+  assert.equal(other.statusCode, 409, 'it runs for real (the address exists)');
+  t.users.markVerified(first.json().user.id, Date.now());
+  const login = await call('POST', '/v1/auth/login', body, { 'idempotency-key': 'login-idem-1' });
+  const access = { 'x-access-token': login.json().tokens.accessToken, 'idempotency-key': 'mfa-setup-idem-1' };
+  const s1 = await call('POST', '/v1/auth/mfa/setup', undefined, access);
+  const s2 = await call('POST', '/v1/auth/mfa/setup', undefined, access);
+  assert.equal(s1.statusCode, 200, s1.body);
+  assert.notEqual(s1.json().secret, s2.json().secret, 'each setup returns a new secret, never a replay');
+  assert.equal(s2.headers['idempotent-replayed'], undefined);
+  const stored = /** @type {any} */ (t.db.raw.prepare("SELECT COUNT(*) AS n FROM service_idempotency WHERE idem_key IN ('login-idem-1', 'mfa-setup-idem-1')").get());
   assert.equal(stored.n, 0);
 });
