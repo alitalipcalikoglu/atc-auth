@@ -40,13 +40,13 @@ authcurl $AUTH/v1/users/usr_mgx1k2ab…/sessions
 ```
 
 ```json
-{ "items": [ { "id": "9b6f…", "createdAt": "…", "lastUsedAt": "…", "expiresAt": "…", "ip": "203.0.113.9", "userAgent": "Mozilla/5.0" } ] }
+{ "items": [ { "id": "ses_mgx1k3cd…", "createdAt": "…", "lastUsedAt": "…", "expiresAt": "…", "ip": "203.0.113.9", "userAgent": "Mozilla/5.0" } ], "nextCursor": null }
 ```
 
 Revoke one device or all:
 
 ```bash
-authcurl -X DELETE $AUTH/v1/users/usr_mgx1k2ab…/sessions/9b6f…    # 204
+authcurl -X DELETE $AUTH/v1/users/usr_mgx1k2ab…/sessions/ses_mgx1k3cd…    # 204
 authcurl -X DELETE $AUTH/v1/users/usr_mgx1k2ab…/sessions          # {"revoked":3}
 ```
 
