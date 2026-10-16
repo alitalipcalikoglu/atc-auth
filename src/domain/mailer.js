@@ -160,7 +160,8 @@ export class NotifyMailer extends Mailer {
    * @param {Record<string, unknown>} data
    */
   async #send(template, to, data) {
-    const res = await this.#request('POST', '/v1/messages', { channel: 'email', template, to: [to], data });
+    // Every mail here is account mail: it must reach an address that unsubscribed from other mail or complained.
+    const res = await this.#request('POST', '/v1/messages', { channel: 'email', template, to: [to], data, transactional: true });
     if (res.status !== 202 && res.status !== 200) {
       const text = (await res.text().catch(() => '')).slice(0, 500);
       throw new MailerError(`notify responded ${res.status}${text ? `: ${text}` : ''}`, { statusCode: res.status });

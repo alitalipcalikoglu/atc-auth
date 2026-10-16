@@ -17,7 +17,8 @@ test('NotifyMailer posts template data with the API key and maps failures', asyn
   assert.equal(calls[0].url, 'https://notify.local/v1/messages');
   assert.equal(/** @type {Record<string,string>} */ (calls[0].init.headers).authorization, `Bearer ${'k'.repeat(40)}`);
   const body = JSON.parse(String(calls[0].init.body));
-  assert.deepEqual(body, { channel: 'email', template: 'email-verification', to: ['a@b.co'], data: { appName: 'Shop', locale: 'en', verifyUrl: 'https://x/v?token=t', expiresInMinutes: 30, name: 'Ali' } });
+  assert.deepEqual(body, { channel: 'email', template: 'email-verification', to: ['a@b.co'], data: { appName: 'Shop', locale: 'en', verifyUrl: 'https://x/v?token=t', expiresInMinutes: 30, name: 'Ali' }, transactional: true });
+  assert.equal(JSON.parse(String(calls[1].init.body)).transactional, true, 'every auth mail is transactional');
   const reset = JSON.parse(String(calls[1].init.body));
   assert.equal(reset.template, 'password-reset');
   assert.equal(reset.data.requestIp, '1.2.3.4');

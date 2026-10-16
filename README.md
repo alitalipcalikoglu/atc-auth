@@ -48,7 +48,7 @@ npm run typecheck
 
 **Responsibilities:** user CRUD; password hashing and reset; session issuance and rotating refresh tokens; JWT signing and JWKS publication; email verification; per-key rate limiting on its own endpoints; forwarding auth security events to audit.
 
-**Non-responsibilities:** auth ≠ general notification delivery — it triggers notify for verification/reset emails, it does not send them itself; auth does not decide what a caller may do once identified (that's each service's own API-key roles/scopes); it does not store business/profile data beyond what identity and session state require.
+**Non-responsibilities:** auth ≠ general notification delivery — it triggers notify for verification/reset emails (always with `transactional: true`, so an address that unsubscribed from other mail or complained still gets its account mail; bounced addresses still do not), it does not send them itself; auth does not decide what a caller may do once identified (that's each service's own API-key roles/scopes); it does not store business/profile data beyond what identity and session state require.
 
 ## API
 
