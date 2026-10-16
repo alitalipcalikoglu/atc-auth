@@ -1,6 +1,8 @@
+import { Ids } from '@atc-web/atc-service-core/ids';
 /** JSON Schemas for the HTTP surface. */
 export class Schemas {
-  static uuid = { type: 'string', format: 'uuid' };
+  static userId = { type: 'string', pattern: Ids.pattern('usr') };
+  static sessionId = { type: 'string', pattern: Ids.pattern('ses') };
   static email = { type: 'string', format: 'email', maxLength: 254 };
   static password = { type: 'string', minLength: 1, maxLength: 1024 };
   static opaqueToken = { type: 'string', minLength: 1, maxLength: 128 };
@@ -14,8 +16,8 @@ export class Schemas {
     return { type: 'object', additionalProperties: false, required, properties };
   }
 
-  static idParams = { type: 'object', properties: { id: Schemas.uuid }, required: ['id'] };
-  static idSidParams = { type: 'object', properties: { id: Schemas.uuid, sid: Schemas.uuid }, required: ['id', 'sid'] };
+  static idParams = { type: 'object', properties: { id: Schemas.userId }, required: ['id'] };
+  static idSidParams = { type: 'object', properties: { id: Schemas.userId, sid: Schemas.sessionId }, required: ['id', 'sid'] };
 
   static listUsersQuery = {
     type: 'object',
@@ -32,7 +34,7 @@ export class Schemas {
     additionalProperties: false,
     properties: {
       limit: { type: 'string', pattern: '^([1-9]|[1-9][0-9]|100)$' },
-      before: { type: 'string', pattern: '^[0-9]{1,15}$' },
+      cursor: { type: 'string', pattern: '^[0-9]{1,15}$' },
     },
   };
 

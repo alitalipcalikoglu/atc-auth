@@ -78,7 +78,7 @@ test('register, list, get, verify, login, refresh, logout over HTTP', async () =
   assert.equal(res.json().items[0].id, user.id);
   res = await call('GET', `/v1/users/${user.id}`);
   assert.equal(res.json().user.id, user.id);
-  assert.equal((await call('GET', '/v1/users/00000000-0000-4000-8000-000000000000')).statusCode, 404);
+  assert.equal((await call('GET', '/v1/users/usr_mgx1k2ab0123456789abcdef')).statusCode, 404);
   assert.equal((await call('GET', '/v1/users/not-uuid')).statusCode, 400);
 
   res = await call('POST', '/v1/auth/verify-email', { token: 'wrong-token' });
@@ -120,7 +120,7 @@ test('register, list, get, verify, login, refresh, logout over HTTP', async () =
 
   res = await call('GET', `/v1/users/${user.id}/events?limit=3`);
   assert.equal(res.json().items.length, 3);
-  assert.ok(res.json().nextBefore);
+  assert.ok(res.json().nextCursor);
   assert.equal(res.json().items[0].type, 'logout');
   assert.equal(res.json().items[0].ip, '198.51.100.7');
 });
@@ -221,7 +221,7 @@ test('Stage 4: a read-only key cannot register, update or delete a user, but can
   assert.equal(res.statusCode, 403);
   res = await app.inject({ method: 'DELETE', url: `/v1/users/${user.id}/sessions`, headers: readAuth });
   assert.equal(res.statusCode, 403, 'a read-only key cannot revoke every session');
-  res = await app.inject({ method: 'DELETE', url: `/v1/users/${user.id}/sessions/00000000-0000-4000-8000-000000000000`, headers: readAuth });
+  res = await app.inject({ method: 'DELETE', url: `/v1/users/${user.id}/sessions/ses_mgx1k2ab0123456789abcdef`, headers: readAuth });
   assert.equal(res.statusCode, 403, 'a read-only key cannot revoke a session');
 
   res = await app.inject({ method: 'GET', url: `/v1/users/${user.id}`, headers: readAuth });
@@ -256,4 +256,16 @@ test('MFA over HTTP: setup and enable with X-Access-Token, MFA_REQUIRED at login
   assert.equal((await call('DELETE', `/v1/users/${id}/mfa`, undefined, { authorization: `Bearer ${READ_KEY}` })).statusCode, 403);
   assert.equal((await call('DELETE', `/v1/users/${id}/mfa`)).statusCode, 204);
   assert.equal((await call('GET', `/v1/users/${id}`)).json().user.mfaEnabled, false);
+});
+
+test('Idempotency-Key replays user creation; credential flows are never stored', async () => {
+  const body = { email: 'idem@example.com', password: 'Str0ng-Passw0rd!x' };
+  const first = await call('POST', '/v1/users', body, { 'idempotency-key': 'create-idem-1' });
+  const again = await call('POST', '/v1/users', body, { 'idempotency-key': 'create-idem-1' });
+  assert.equal(first.statusCode, 201, first.body);
+  assert.deepEqual([again.statusCode, again.headers['idempotent-replayed'], again.json().user.id], [201, 'true', first.json().user.id]);
+  assert.match(first.json().user.id, /^usr_[0-9a-z]{6,12}[0-9a-f]{16}$/);
+  await call('POST', '/v1/auth/login', body, { 'idempotency-key': 'login-idem-1' });
+  const stored = /** @type {any} */ (t.db.raw.prepare("SELECT COUNT(*) AS n FROM service_idempotency WHERE idem_key = 'login-idem-1'").get());
+  assert.equal(stored.n, 0);
 });

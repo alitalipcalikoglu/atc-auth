@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { Ids } from '@atc-web/atc-service-core/ids';
 import { OpaqueToken } from '../crypto/opaque-token.js';
 
 /** @typedef {import('../db.js').Database} Database */
@@ -34,7 +34,7 @@ export class SessionStore {
    * @returns {{ session: SessionRow, refreshToken: string }}
    */
   create({ userId, ttlMs, ip = null, userAgent = null }, now = Date.now()) {
-    const id = randomUUID();
+    const id = Ids.create('ses');
     const { token, hash } = OpaqueToken.generate();
     this.stmt.insert.run(id, userId, hash, now, now, now + ttlMs, ip, userAgent);
     return { session: /** @type {SessionRow} */ (this.stmt.byId.get(id)), refreshToken: token };

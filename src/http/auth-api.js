@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { registerInfo, registerOpenApi, registerProbes, registerRequestContext, requestOptions } from '@atc-web/atc-service-core/fastify';
+import { Idempotency } from '@atc-web/atc-service-core/idempotency';
 import { AuthError } from '../domain/errors.js';
 import { ApiKeyAuth } from './api-key-auth.js';
 import { Schemas } from './schemas.js';
@@ -25,7 +26,7 @@ class UserCursor {
 
   /** @param {string} cursor */
   static decode(cursor) {
-    const m = /^(\d{1,16}):([0-9a-f-]{36})$/.exec(Buffer.from(cursor, 'base64url').toString());
+    const m = /^(\d{1,16}):(usr_[0-9a-z]{6,12}[0-9a-f]{16})$/.exec(Buffer.from(cursor, 'base64url').toString());
     if (!m) throw Object.assign(new Error('invalid cursor'), { statusCode: 400, code: 'INVALID_CURSOR' });
     return { createdAt: Number(m[1]), id: m[2] };
   }
@@ -84,6 +85,8 @@ export class AuthApi {
     app.decorateRequest('apiKeyRole', undefined);
     app.decorateRequest('apiKeyScopes', null);
     app.setErrorHandler(this.#errorHandler);
+    // /v1/auth/* carries passwords, codes and tokens: never stored for replay.
+    Idempotency.register(app, { raw: this.db.raw, skip: (r) => r.url.startsWith('/v1/auth/') });
     app.setNotFoundHandler((_request, reply) => {
       reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'route not found' } });
     });
@@ -213,6 +216,7 @@ export class AuthApi {
 
     api.get('/users/:id/sessions', { schema: { params: Schemas.idParams } }, async (request) => ({
       items: s.listSessions(/** @type {{ id: string }} */ (request.params).id).map(Views.session),
+      nextCursor: null,
     }));
 
     api.delete('/users/:id/sessions', { schema: { params: Schemas.idParams }, preHandler: ApiKeyAuth.require('write') }, async (request) => ({
@@ -227,12 +231,12 @@ export class AuthApi {
 
     api.get('/users/:id/events', { schema: { params: Schemas.idParams, querystring: Schemas.listEventsQuery } }, async (request) => {
       const { id } = /** @type {{ id: string }} */ (request.params);
-      const q = /** @type {{ limit?: string, before?: string }} */ (request.query);
+      const q = /** @type {{ limit?: string, cursor?: string }} */ (request.query);
       if (!this.users.byId(id)) throw new AuthError('USER_NOT_FOUND', 'user not found');
       const limit = q.limit ? Number(q.limit) : 50;
-      const rows = this.events.forUser(id, { limit: limit + 1, beforeId: q.before ? Number(q.before) : undefined });
+      const rows = this.events.forUser(id, { limit: limit + 1, beforeId: q.cursor ? Number(q.cursor) : undefined });
       const items = rows.slice(0, limit);
-      return { items: items.map(Views.event), nextBefore: rows.length > limit ? String(items.at(-1)?.id) : null };
+      return { items: items.map(Views.event), nextCursor: rows.length > limit ? String(items.at(-1)?.id) : null };
     });
 
     // ---- authentication flows

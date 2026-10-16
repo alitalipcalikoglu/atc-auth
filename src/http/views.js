@@ -32,7 +32,7 @@ export class Views {
 
   /** @param {EventRow} e */
   static event(e) {
-    return { id: e.id, type: e.type, ip: e.ip, meta: e.meta ? JSON.parse(e.meta) : null, at: iso(e.at) };
+    return { seq: Number(e.id), type: e.type, ip: e.ip, meta: e.meta ? JSON.parse(e.meta) : null, at: iso(e.at) };
   }
 
   /** @param {import('../domain/auth-service.js').TokenPair} t */

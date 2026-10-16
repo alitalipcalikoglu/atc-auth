@@ -7,14 +7,14 @@ authcurl -X POST $AUTH/v1/auth/login -d '{ "email": "ali@example.com", "password
 ```
 
 ```json
-{ "user": { "id": "313e3f1a-…", "email": "ali@example.com", "emailVerified": true, "...": "…" },
+{ "user": { "id": "usr_mgx1k2ab…", "email": "ali@example.com", "emailVerified": true, "...": "…" },
   "tokens": {
     "tokenType": "Bearer",
     "accessToken": "eyJhbGciOiJFUzI1NiIsImtpZCI6InBES09…",
     "accessTokenExpiresAt": "2026-09-16T04:23:28.000Z",
     "refreshToken": "c1Yt8bZ…43 url-safe chars",
     "refreshTokenExpiresAt": "2026-10-16T04:08:28.791Z",
-    "sessionId": "9b6f…"
+    "sessionId": "ses_mgx1k3cd…"
   } }
 ```
 
@@ -29,7 +29,7 @@ Wrong password or unknown email: `401 INVALID_CREDENTIALS`, same message for bot
 
 ```json
 { "alg": "ES256", "kid": "pDKOoa3NEDgl-…", "typ": "JWT" }
-{ "iss": "https://auth.example.com", "aud": "shop", "sub": "313e3f1a-…", "sid": "9b6f…",
+{ "iss": "https://auth.example.com", "aud": "shop", "sub": "usr_mgx1k2ab…", "sid": "ses_mgx1k3cd…",
   "email": "ali@example.com", "email_verified": true, "jti": "d3a0…", "iat": 1758000508, "exp": 1758001408 }
 ```
 

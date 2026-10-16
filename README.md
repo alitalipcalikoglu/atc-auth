@@ -103,6 +103,13 @@ const jwks = createRemoteJWKSet(new URL('https://auth.example.com/.well-known/jw
 const { payload } = await jwtVerify(token, jwks, { issuer: 'https://auth.example.com', audience: 'shop' });
 ```
 
+
+## Conventions
+
+- Ids: users are `usr_<time><random>`, sessions `ses_…` (the platform's one id format); event log rows carry `seq`.
+- Lists answer `{ items, nextCursor }`; pass `nextCursor` back as `cursor`.
+- `Idempotency-Key` on POSTs under `/v1/users` replays the first 2xx answer for 24 h (per API key). `/v1/auth/*` requests carry passwords, codes or tokens and are never stored for replay; their effects are idempotent where it matters (logout, verify) or must not be repeated blindly (login).
+
 ## Examples
 
 Scenario walkthroughs for every feature live in [examples/](examples/README.md).

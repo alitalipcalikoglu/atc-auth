@@ -133,6 +133,8 @@ paths:
   /v1/users:
     post:
       operationId: atc-auth.users.create
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       summary: Register a user
       description: >-
         Requires an API key with the `write` role (`write` or `readwrite`; `read`-only keys get
@@ -317,7 +319,7 @@ paths:
       - name: sid
         in: path
         required: true
-        schema: { type: string, format: uuid }
+        schema: { type: string, pattern: "^ses_[0-9a-z]{6,12}[0-9a-f]{16}$" }
         description: Session id.
     delete:
       operationId: atc-auth.sessions.revokeOne
@@ -348,10 +350,7 @@ paths:
       operationId: atc-auth.events.list
       summary: List a user's audit events
       description: >-
-        Keyset-paginated, newest first. Note the pagination field is `nextBefore`, not
-        `nextCursor` — this service is one of several across the platform whose list envelopes use
-        a slightly different cursor field name (a known, not-yet-normalized cross-service
-        inconsistency).
+        Keyset-paginated, newest first: pass `nextCursor` back as `cursor`.
       tags: [Events]
       x-stack-visibility: authenticated
       parameters:
@@ -359,10 +358,10 @@ paths:
           in: query
           schema: { type: string, pattern: "^([1-9]|[1-9][0-9]|100)$" }
           description: Page size, 1-100. Default 50.
-        - name: before
+        - name: cursor
           in: query
           schema: { type: string, pattern: "^[0-9]{1,15}$" }
-          description: Event id cursor from a previous page's `nextBefore`.
+          description: Opaque `nextCursor` from the previous page.
       responses:
         "200":
           description: OK.
@@ -671,6 +670,8 @@ paths:
       - $ref: "#/components/parameters/UserId"
     post:
       operationId: atc-auth.users.anonymize
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
       summary: Erase the person, keep the account row (irreversible)
       description: >-
         Requires an API key with the `write` role. The address becomes `anonymized-<id>@anonymized.invalid`,
@@ -879,11 +880,17 @@ components:
         cannot express it structurally.
 
   parameters:
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: "Optional. Repeats of this POST with the same key (per API key, 24 h) replay the first 2xx answer with `Idempotent-Replayed: true` instead of running again; the same key with another method, path or body is `409 IDEMPOTENCY_MISMATCH`, while the first still runs `409 IDEMPOTENCY_IN_PROGRESS`."
+      schema: { type: string, pattern: '^[A-Za-z0-9._:-]{8,255}$' }
     UserId:
       name: id
       in: path
       required: true
-      schema: { type: string, format: uuid }
+      schema: { type: string, pattern: "^usr_[0-9a-z]{6,12}[0-9a-f]{16}$" }
       description: User id.
     XAccessToken:
       name: X-Access-Token
@@ -977,7 +984,7 @@ components:
       additionalProperties: false
       required: [id, email, name, status, emailVerified, emailVerifiedAt, lockedUntil, passwordChangedAt, mfaEnabled, mfaEnabledAt, createdAt, updatedAt]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, pattern: "^usr_[0-9a-z]{6,12}[0-9a-f]{16}$" }
         email: { type: string, format: email }
         name: { type: [string, "null"], maxLength: 120 }
         status: { type: string, enum: [active, disabled] }
@@ -998,7 +1005,7 @@ components:
       additionalProperties: false
       required: [id, createdAt, lastUsedAt, expiresAt, ip, userAgent]
       properties:
-        id: { type: string, format: uuid }
+        id: { type: string, pattern: "^ses_[0-9a-z]{6,12}[0-9a-f]{16}$" }
         createdAt: { type: string, format: date-time }
         lastUsedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
@@ -1008,9 +1015,9 @@ components:
     Event:
       type: object
       additionalProperties: false
-      required: [id, type, ip, meta, at]
+      required: [seq, type, ip, meta, at]
       properties:
-        id: { type: integer }
+        seq: { type: integer, description: Position in the event log (log rows expose `seq`, never `id`). }
         type: { type: string, description: "e.g. login.succeeded, login.failed, session.revoked, account.disabled, password.changed." }
         ip: { type: [string, "null"] }
         meta:
@@ -1028,15 +1035,15 @@ components:
         accessTokenExpiresAt: { type: string, format: date-time }
         refreshToken: { type: string, description: "Opaque token." }
         refreshTokenExpiresAt: { type: string, format: date-time }
-        sessionId: { type: string, format: uuid }
+        sessionId: { type: string, pattern: "^ses_[0-9a-z]{6,12}[0-9a-f]{16}$" }
 
     AccessClaims:
       type: object
       additionalProperties: false
       required: [sub, sid, email, email_verified, jti, iat, exp, iss, aud]
       properties:
-        sub: { type: string, format: uuid, description: "User id." }
-        sid: { type: string, format: uuid, description: "Session id." }
+        sub: { type: string, pattern: "^usr_[0-9a-z]{6,12}[0-9a-f]{16}$", description: "User id." }
+        sid: { type: string, pattern: "^ses_[0-9a-z]{6,12}[0-9a-f]{16}$", description: "Session id." }
         email: { type: string, format: email }
         email_verified: { type: boolean }
         jti: { type: string, format: uuid }
@@ -1208,26 +1215,24 @@ components:
     SessionListResponse:
       type: object
       additionalProperties: false
-      required: [items]
+      required: [items, nextCursor]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/Session" }
+        nextCursor: { type: "null", description: Always null; a user's sessions come in one page. }
 
     EventListResponse:
       type: object
       additionalProperties: false
-      required: [items, nextBefore]
+      required: [items, nextCursor]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/Event" }
-        nextBefore:
+        nextCursor:
           type: [string, "null"]
-          description: >-
-            Event-id cursor for the next (older) page, or null when there is no next page. Named
-            `nextBefore`, not `nextCursor` — this list endpoint's field name differs from
-            `/v1/users`'s, a known cross-service/cross-endpoint inconsistency, not a typo.
+          description: Opaque cursor for the next (older) page, or null when there is no next page.
 
     IntrospectResponse:
       description: >-

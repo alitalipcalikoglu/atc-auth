@@ -11,7 +11,7 @@ authcurl -X POST $AUTH/v1/users -d '{ "email": "Ali@Example.com", "password": "c
 `201 Created`, `Location: /v1/users/<id>`:
 
 ```json
-{ "user": { "id": "313e3f1a-…", "email": "ali@example.com", "name": "Ali", "status": "active",
+{ "user": { "id": "usr_mgx1k2ab…", "email": "ali@example.com", "name": "Ali", "status": "active",
             "emailVerified": false, "emailVerifiedAt": null, "lockedUntil": null,
             "passwordChangedAt": "2026-09-16T04:08:28.791Z", "createdAt": "2026-09-16T04:08:28.791Z", "updatedAt": "2026-09-16T04:08:28.791Z" },
   "verificationEmailSent": true }
@@ -54,7 +54,7 @@ Default: users can log in before verifying; the access token carries `email_veri
 ## Audit trail
 
 ```bash
-authcurl $AUTH/v1/users/313e3f1a-…/events
+authcurl $AUTH/v1/users/usr_mgx1k2ab…/events
 ```
 
 shows `user.registered`, `email.verified`, `email.verification_resent` with the forwarded `X-Client-IP`.

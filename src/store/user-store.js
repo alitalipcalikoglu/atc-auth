@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { Ids } from '@atc-web/atc-service-core/ids';
 
 /** @typedef {import('../db.js').Database} Database */
 /** @typedef {import('../types.js').UserRow} UserRow */
@@ -43,7 +43,7 @@ export class UserStore {
    * @returns {UserRow}
    */
   create(input, now = Date.now()) {
-    const id = randomUUID();
+    const id = Ids.create('usr');
     this.stmt.insert.run(id, UserStore.normalizeEmail(input.email), input.name ?? null, input.passwordHash, now, now, now);
     return /** @type {UserRow} */ (this.stmt.byId.get(id));
   }
