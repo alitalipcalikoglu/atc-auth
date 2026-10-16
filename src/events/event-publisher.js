@@ -117,8 +117,8 @@ export class EventPublisher {
     const t = /** @type {NonNullable<typeof this.target>} */ (this.target);
     const res = await this.fetch(`${t.url}/v1/events`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${t.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ type: e.type, data: e.data, idempotencyKey: e.key }),
+      headers: { authorization: `Bearer ${t.apiKey}`, 'content-type': 'application/json', 'idempotency-key': e.key },
+      body: JSON.stringify({ type: e.type, data: e.data }),
       redirect: 'error',
       signal: AbortSignal.any([AbortSignal.timeout(t.timeoutMs), this.abort.signal]),
     });

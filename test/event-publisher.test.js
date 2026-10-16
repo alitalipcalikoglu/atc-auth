@@ -9,7 +9,7 @@ test('events: sent with a unique idempotency key, retried on failure, counted', 
   /** @type {any[]} */ const calls = [];
   let fail = 2;
   const fetchImpl = /** @type {typeof fetch} */ (async (url, init) => {
-    calls.push({ url, body: JSON.parse(String(init?.body)), auth: /** @type {any} */ (init?.headers).authorization });
+    calls.push({ url, body: JSON.parse(String(init?.body)), auth: /** @type {any} */ (init?.headers).authorization, key: /** @type {any} */ (init?.headers)['idempotency-key'] });
     if (fail-- > 0) return new Response('x', { status: 503 });
     return new Response('{}', { status: 202 });
   });
@@ -18,8 +18,9 @@ test('events: sent with a unique idempotency key, retried on failure, counted', 
   await settle(p);
   assert.equal(calls.length, 3);
   assert.deepEqual([calls[0].url, calls[0].auth, calls[0].body.type, calls[0].body.data], ['http://hook/v1/events', 'Bearer k', 'ops.x.y', { a: 1 }]);
-  assert.equal(new Set(calls.map((c) => c.body.idempotencyKey)).size, 1, 'a retry reuses the key');
-  assert.match(calls[0].body.idempotencyKey, /^atc-x:[0-9a-f-]{36}$/);
+  assert.equal(new Set(calls.map((c) => c.key)).size, 1, 'a retry reuses the key');
+  assert.match(calls[0].key, /^atc-x:[0-9a-f-]{36}$/);
+  assert.equal(calls[0].body.idempotencyKey, undefined, 'sent as the Idempotency-Key header, not in the body');
   assert.deepEqual(p.stats, { published: 1, sent: 1, dropped: 0, failed: 0 });
   assert.equal(p.publish('late'), false, 'closed');
 });
