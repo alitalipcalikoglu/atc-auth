@@ -15,6 +15,14 @@ MFA/WebAuthn/OIDC federation, authorization/roles (callers own that).
   checked there).
 - audit (`AUDIT_URL`/`AUDIT_API_KEY`), optional, both-or-neither: forwards every recorded security
   event as `auth.<type>` (Stage 0/on).
+- `atc-webhook-out` (`WEBHOOK_OUT_URL` + `WEBHOOK_OUT_API_KEY`, a publish-role key): optional,
+  both-or-neither. Account, session and MFA events are published best effort from a bounded in-memory queue (500
+  events, three retries, an idempotency key each) in the background; the request path never waits
+  on it, and events still queued at a restart are lost (atc-stack `docs/EVENTS.md`).
+- Have I Been Pwned range API (`PASSWORD_BREACH_CHECK=true`, `PASSWORD_BREACH_URL`,
+  `PASSWORD_BREACH_TIMEOUT_MS`): optional external lookup when a password is set or changed
+  (k-anonymity, only the first 5 hex characters of the SHA-1 leave the host). A failed or slow
+  lookup lets the password through, so it never gates a request. Default off.
 
 ## Persistence
 
@@ -73,6 +81,12 @@ idempotency case: presenting an already-rotated (previous) token is treated as *
 retried as if idempotent — it revokes the whole session and is recorded as a
 `session.reuse_detected` failure event. Action tokens (verify/reset) are single-use, enforced by a
 conditional `UPDATE ... WHERE used_at IS NULL`.
+
+`POST /v1/users` and `POST /v1/users/:id/anonymize` accept an optional `Idempotency-Key` header
+(`@atc-web/atc-service-core/idempotency`, v1.30): a repeat with the same key, caller and body replays
+the stored 2xx answer with `Idempotent-Replayed: true`; the same key with another body is
+`409 IDEMPOTENCY_MISMATCH`. Routes that answer with tokens, TOTP secrets or recovery codes never
+opt in, so a stored answer can never leak a secret.
 
 ## Backup
 
