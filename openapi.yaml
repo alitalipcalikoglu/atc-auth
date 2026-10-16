@@ -761,14 +761,21 @@ paths:
       operationId: atc-auth.mfa.setup
       summary: Start MFA enrolment for the signed-in user
       description: >-
-        Needs the end user's access token in `X-Access-Token`. Answers a new TOTP secret and its `otpauth://` URL
-        (show it as a QR code); MFA stays off until `POST /v1/auth/mfa/enable` gets a code from the app. Calling it
-        again before enabling replaces the secret. `409 MFA_ALREADY_ENABLED` when MFA is on, `503 MFA_UNAVAILABLE`
+        Needs the end user's access token in `X-Access-Token` and the current password in the body (a stolen
+        token alone must not be able to bind another authenticator; a wrong password is `401 INVALID_CREDENTIALS`
+        and counts toward the sign-in lockout). Answers a new TOTP secret and its `otpauth://` URL (show it as a
+        QR code); MFA stays off until `POST /v1/auth/mfa/enable` gets the password and a code from the app. Calling
+        it again before enabling replaces the secret. `409 MFA_ALREADY_ENABLED` when MFA is on, `503 MFA_UNAVAILABLE`
         when the server has no `MFA_SECRETS_KEY`.
       tags: [MFA]
       x-stack-visibility: authenticated
       parameters:
         - $ref: "#/components/parameters/XAccessToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MfaPasswordRequest" }
       responses:
         "200":
           description: OK.
@@ -783,7 +790,7 @@ paths:
   /v1/auth/mfa/enable:
     post:
       operationId: atc-auth.mfa.enable
-      summary: Turn MFA on with a first code; answers the recovery codes once
+      summary: Turn MFA on with the password and a first code; answers the recovery codes once
       tags: [MFA]
       x-stack-visibility: authenticated
       parameters:
@@ -792,7 +799,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/MfaCodeRequest" }
+            schema: { $ref: "#/components/schemas/MfaPasswordAndCodeRequest" }
       responses:
         "200":
           description: MFA is on. Ten one-time recovery codes, never shown again.
@@ -828,7 +835,7 @@ paths:
   /v1/auth/mfa/recovery-codes:
     post:
       operationId: atc-auth.mfa.recoveryCodes
-      summary: Replace the recovery codes (confirmed with a current code)
+      summary: Replace the recovery codes (confirmed with the password and a current code)
       tags: [MFA]
       x-stack-visibility: authenticated
       parameters:
@@ -837,7 +844,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/MfaCodeRequest" }
+            schema: { $ref: "#/components/schemas/MfaPasswordAndCodeRequest" }
       responses:
         "200":
           description: New codes; the old ones stop working.
@@ -1156,11 +1163,19 @@ components:
         mfaToken: { type: string, minLength: 1, maxLength: 128 }
         code: { type: string, minLength: 6, maxLength: 16, description: Six digits from the app, or a recovery code. }
 
-    MfaCodeRequest:
+    MfaPasswordRequest:
       type: object
       additionalProperties: false
-      required: [code]
+      required: [password]
       properties:
+        password: { type: string, minLength: 1, maxLength: 1024, description: The user's current password; a wrong one counts toward the sign-in lockout. }
+
+    MfaPasswordAndCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [password, code]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 1024, description: The user's current password; a wrong one counts toward the sign-in lockout. }
         code: { type: string, minLength: 6, maxLength: 16 }
 
     MfaDisableRequest:

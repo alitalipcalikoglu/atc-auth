@@ -301,16 +301,17 @@ export class AuthApi {
     });
 
     // ---- the end user's own MFA (X-Access-Token)
-    api.post('/auth/mfa/setup', async (request) => s.mfaSetup((await this.#endUser(request)).sub, ctx(request)));
-    api.post('/auth/mfa/enable', { schema: { body: Schemas.codeOnly } }, async (request) => ({
-      recoveryCodes: await s.mfaEnable((await this.#endUser(request)).sub, /** @type {{ code: string }} */ (request.body).code, ctx(request)),
+    // Every MFA change proves the password again: an access token alone must not be enough to bind another device.
+    api.post('/auth/mfa/setup', { schema: { body: Schemas.passwordOnly } }, async (request) => s.mfaSetup((await this.#endUser(request)).sub, /** @type {{ password: string }} */ (request.body).password, ctx(request)));
+    api.post('/auth/mfa/enable', { schema: { body: Schemas.disableMfa } }, async (request) => ({
+      recoveryCodes: await s.mfaEnable((await this.#endUser(request)).sub, /** @type {{ password: string, code: string }} */ (request.body), ctx(request)),
     }));
     api.post('/auth/mfa/disable', { schema: { body: Schemas.disableMfa } }, async (request, reply) => {
       await s.mfaDisable((await this.#endUser(request)).sub, /** @type {{ password: string, code: string }} */ (request.body), ctx(request));
       return reply.code(204).send();
     });
-    api.post('/auth/mfa/recovery-codes', { schema: { body: Schemas.codeOnly } }, async (request) => ({
-      recoveryCodes: s.mfaRecoveryCodes((await this.#endUser(request)).sub, /** @type {{ code: string }} */ (request.body).code, ctx(request)),
+    api.post('/auth/mfa/recovery-codes', { schema: { body: Schemas.disableMfa } }, async (request) => ({
+      recoveryCodes: await s.mfaRecoveryCodes((await this.#endUser(request)).sub, /** @type {{ password: string, code: string }} */ (request.body), ctx(request)),
     }));
 
     // ---- administration of a user's MFA

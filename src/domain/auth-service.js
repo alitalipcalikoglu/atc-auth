@@ -558,13 +558,16 @@ export class AuthService {
   // ---------------------------------------------------------------- MFA
 
   /**
-   * Start (or restart) enrolment: a new secret, stored sealed and not yet active.
-   * @param {string} userId @param {Ctx} ctx
-   * @returns {{ secret: string, otpauthUrl: string }}
+   * Start (or restart) enrolment: a new secret, stored sealed and not yet active. The password is
+   * checked first (through the sign-in lockout): a stolen access token alone must not be able to
+   * bind the account to an attacker's authenticator.
+   * @param {string} userId @param {string} password @param {Ctx} ctx
+   * @returns {Promise<{ secret: string, otpauthUrl: string }>}
    */
-  mfaSetup(userId, ctx) {
+  async mfaSetup(userId, password, ctx) {
     const box = this.#requireMfaBox();
     const user = this.#requireUser(userId);
+    await this.#verifyCredentials(user, password, ctx, { failedEvent: 'mfa.setup_failed' });
     if (user.mfa_enabled_at !== null) throw new AuthError('MFA_ALREADY_ENABLED', 'MFA is already on; turn it off first to enrol a new device');
     const secret = Totp.generateSecret();
     const now = this.now();
@@ -576,20 +579,21 @@ export class AuthService {
   }
 
   /**
-   * Finish enrolment with a code from the app; answers the recovery codes (shown once).
-   * @param {string} userId @param {string} code @param {Ctx} ctx
+   * Finish enrolment with the password and a code from the app; answers the recovery codes (shown once).
+   * @param {string} userId @param {{ password: string, code: string }} input @param {Ctx} ctx
    * @returns {Promise<string[]>}
    */
-  async mfaEnable(userId, code, ctx) {
+  async mfaEnable(userId, input, ctx) {
     const box = this.#requireMfaBox();
     const user = this.#requireUser(userId);
+    await this.#verifyCredentials(user, input.password, ctx, { failedEvent: 'mfa.enable_failed' });
     const row = this.mfa.get(userId);
     if (user.mfa_enabled_at !== null) throw new AuthError('MFA_ALREADY_ENABLED', 'MFA is already on');
     if (!row) throw new AuthError('MFA_SETUP_REQUIRED', 'start the setup first');
     const now = this.now();
-    const step = Totp.verify(box.open(row.secret), code, now);
+    const step = Totp.verify(box.open(row.secret), input.code, now);
     if (step === null) {
-      this.events.record({ userId, type: 'mfa.enable_failed', ip: ctx.ip }, now);
+      this.#failSecondFactor(user, ctx, 'mfa.enable_failed', now);
       throw new AuthError('INVALID_MFA_CODE', 'the code is not valid');
     }
     const codes = this.db.transaction(() => {
@@ -622,18 +626,22 @@ export class AuthService {
   }
 
   /**
-   * New recovery codes (the old ones stop working), confirmed with a current TOTP code.
-   * @param {string} userId @param {string} code @param {Ctx} ctx
-   * @returns {string[]}
+   * New recovery codes (the old ones stop working), confirmed with the password and a current TOTP code.
+   * @param {string} userId @param {{ password: string, code: string }} input @param {Ctx} ctx
+   * @returns {Promise<string[]>}
    */
-  mfaRecoveryCodes(userId, code, ctx) {
+  async mfaRecoveryCodes(userId, input, ctx) {
     const box = this.#requireMfaBox();
     const user = this.#requireUser(userId);
+    await this.#verifyCredentials(user, input.password, ctx, { failedEvent: 'mfa.recovery_codes_failed' });
     const row = this.mfa.get(userId);
     if (user.mfa_enabled_at === null || !row) throw new AuthError('MFA_NOT_ENABLED', 'MFA is not on');
     const now = this.now();
-    const step = Totp.verify(box.open(row.secret), code, now);
-    if (step === null || !this.mfa.useStep(userId, step)) throw new AuthError('INVALID_MFA_CODE', 'the code is not valid');
+    const step = Totp.verify(box.open(row.secret), input.code, now);
+    if (step === null || !this.mfa.useStep(userId, step)) {
+      this.#failSecondFactor(user, ctx, 'mfa.recovery_codes_failed', now);
+      throw new AuthError('INVALID_MFA_CODE', 'the code is not valid');
+    }
     return this.db.transaction(() => {
       this.events.record({ userId, type: 'mfa.recovery_codes_replaced', ip: ctx.ip }, now);
       return this.mfa.replaceRecoveryCodes(userId);
@@ -778,6 +786,13 @@ export class AuthService {
   /** @param {UserRow} user @param {'mfa_enabled'|'mfa_disabled'|'mfa_reset'} kind @param {Ctx} ctx */
   async #notice(user, kind, ctx) {
     try { await this.mailer.sendNotice({ to: user.email, name: user.name, kind, details: { ip: ctx.ip ?? '' } }); } catch (err) { this.log.error({ err, userId: user.id }, `${kind} notice failed`); }
+  }
+
+  /** A wrong second factor outside sign-in counts toward the same per-user/address lockout as a wrong password. @param {UserRow} user @param {Ctx} ctx @param {string} type @param {number} now */
+  #failSecondFactor(user, ctx, type, now) {
+    const pair = this.guard.fail(user.id, ctx.ip ?? 'unknown', { maxFailures: this.options.loginMaxFailures, lockoutMs: this.options.lockoutMs }, now);
+    this.events.record({ userId: user.id, type, ip: ctx.ip, meta: { reason: 'bad_code', failures: pair.failures } }, now);
+    if (pair.lockedUntil) this.events.record({ userId: user.id, type: 'account.locked', ip: ctx.ip, meta: { scope: 'address' } }, now);
   }
 
   /**

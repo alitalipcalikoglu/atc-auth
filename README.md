@@ -78,10 +78,10 @@ Errors are JSON: `{ "error": { "code", "message", "details?" } }`. `423` and `42
 | POST | `/v1/auth/password/forgot` | `{ email }` → `202`. Always accepted; silent for unknown, disabled or throttled accounts. |
 | POST | `/v1/auth/password/reset` | `{ token, password }` → `{ user }`. Revokes all sessions, marks email verified. |
 | POST | `/v1/auth/password/change` | Header `X-Access-Token: <jwt>`, body `{ currentPassword, newPassword }` → `204`. Keeps the current session, revokes the others. |
-| POST | `/v1/auth/mfa/setup` | Header `X-Access-Token`. → `{ secret, otpauthUrl }`; MFA stays off until enabled. |
-| POST | `/v1/auth/mfa/enable` | Header `X-Access-Token`, `{ code }` → `{ recoveryCodes }` (ten, shown once). |
+| POST | `/v1/auth/mfa/setup` | Header `X-Access-Token`, `{ password }`. → `{ secret, otpauthUrl }`; MFA stays off until enabled. |
+| POST | `/v1/auth/mfa/enable` | Header `X-Access-Token`, `{ password, code }` → `{ recoveryCodes }` (ten, shown once). |
 | POST | `/v1/auth/mfa/disable` | Header `X-Access-Token`, `{ password, code }` → `204`. |
-| POST | `/v1/auth/mfa/recovery-codes` | Header `X-Access-Token`, `{ code }` → new `{ recoveryCodes }`. |
+| POST | `/v1/auth/mfa/recovery-codes` | Header `X-Access-Token`, `{ password, code }` → new `{ recoveryCodes }`. |
 | DELETE | `/v1/users/:id/mfa` | Administration: remove a user's MFA (lost device). The user is mailed. |
 | GET | `/metrics` | Prometheus text: users by status, active sessions, uptime. API key required. |
 

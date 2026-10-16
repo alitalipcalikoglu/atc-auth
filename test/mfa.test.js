@@ -12,11 +12,13 @@ const ctx = at('203.0.113.5');
 async function enrolled(/** @type {Record<string, string>} */ env = {}) {
   const t = await testAuthService({ LOGIN_REQUIRES_VERIFIED_EMAIL: 'false', ...env });
   const { user } = await t.service.register({ email: 'm@example.com', password: GOOD_PASSWORD }, ctx);
-  const { secret, otpauthUrl } = t.service.mfaSetup(user.id, ctx);
+  await assert.rejects(t.service.mfaSetup(user.id, 'wrong wrong wrong', ctx), code('INVALID_CREDENTIALS'), 'an access token alone cannot start enrolment');
+  const { secret, otpauthUrl } = await t.service.mfaSetup(user.id, GOOD_PASSWORD, ctx);
   assert.match(otpauthUrl, /^otpauth:\/\/totp\/Shop%3Am%40example\.com\?secret=/);
-  await assert.rejects(t.service.mfaEnable(user.id, '000000', ctx), code('INVALID_MFA_CODE'));
+  await assert.rejects(t.service.mfaEnable(user.id, { password: 'wrong wrong wrong', code: '000000' }, ctx), code('INVALID_CREDENTIALS'));
+  await assert.rejects(t.service.mfaEnable(user.id, { password: GOOD_PASSWORD, code: '000000' }, ctx), code('INVALID_MFA_CODE'));
   const totp = (/** @type {number} */ offsetSec = 0) => Totp.code(secret, Math.floor((t.clock.now / 1000 + offsetSec) / 30));
-  const recovery = await t.service.mfaEnable(user.id, totp(), ctx);
+  const recovery = await t.service.mfaEnable(user.id, { password: GOOD_PASSWORD, code: totp() }, ctx);
   t.clock.now += 30_000; // the enrolment code's step is used up
   return { t, user, secret, totp, recovery };
 }
@@ -34,7 +36,7 @@ test('MFA enrolment, sign-in in two steps, each code once, recovery codes once',
   assert.match(recovery[0], /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
   assert.equal(t.users.byId(user.id)?.mfa_enabled_at !== null, true);
   assert.deepEqual(t.mailer.notices.map((n) => n.kind), ['mfa_enabled']);
-  assert.throws(() => t.service.mfaSetup(user.id, ctx), code('MFA_ALREADY_ENABLED'));
+  await assert.rejects(t.service.mfaSetup(user.id, GOOD_PASSWORD, ctx), code('MFA_ALREADY_ENABLED'));
 
   const challenge = await passwordStep(t);
   const c = totp();
@@ -67,7 +69,8 @@ test('MFA: disable needs the password and a code; new recovery codes; admin rese
   const { t, user, totp, recovery } = await enrolled();
   await assert.rejects(t.service.mfaDisable(user.id, { password: 'wrong wrong wrong', code: totp() }, ctx), code('INVALID_CREDENTIALS'));
   await assert.rejects(t.service.mfaDisable(user.id, { password: GOOD_PASSWORD, code: '123456' }, ctx), code('INVALID_MFA_CODE'));
-  const fresh = t.service.mfaRecoveryCodes(user.id, totp(), ctx);
+  await assert.rejects(t.service.mfaRecoveryCodes(user.id, { password: 'wrong wrong wrong', code: totp() }, ctx), code('INVALID_CREDENTIALS'));
+  const fresh = await t.service.mfaRecoveryCodes(user.id, { password: GOOD_PASSWORD, code: totp() }, ctx);
   assert.equal(fresh.length, 10);
   await assert.rejects(t.service.loginMfa({ mfaToken: await passwordStep(t), code: recovery[1] }, ctx), code('INVALID_MFA_CODE'), 'old recovery codes stop working');
   await t.service.mfaDisable(user.id, { password: GOOD_PASSWORD, code: fresh[0] }, ctx);
@@ -83,7 +86,7 @@ test('MFA: disable needs the password and a code; new recovery codes; admin rese
 
   const off = await testAuthService({ MFA_SECRETS_KEY: '' });
   const { user: u } = await off.service.register({ email: 'n@example.com', password: GOOD_PASSWORD }, ctx);
-  assert.throws(() => off.service.mfaSetup(u.id, ctx), code('MFA_UNAVAILABLE'));
+  await assert.rejects(off.service.mfaSetup(u.id, GOOD_PASSWORD, ctx), code('MFA_UNAVAILABLE'));
 });
 
 test('password history: the current and the last N passwords cannot come back', async () => {

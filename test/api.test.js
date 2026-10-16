@@ -234,13 +234,14 @@ test('MFA over HTTP: setup and enable with X-Access-Token, MFA_REQUIRED at login
   t.users.markVerified(/** @type {any} */ (t.users.byEmail(email)).id, Date.now());
   let res = await call('POST', '/v1/auth/login', { email, password: GOOD_PASSWORD });
   const access = { 'x-access-token': res.json().tokens.accessToken };
-  assert.equal((await call('POST', '/v1/auth/mfa/setup')).statusCode, 401, 'needs the end user token');
-  res = await call('POST', '/v1/auth/mfa/setup', undefined, access);
+  assert.equal((await call('POST', '/v1/auth/mfa/setup', { password: GOOD_PASSWORD })).statusCode, 401, 'needs the end user token');
+  assert.equal((await call('POST', '/v1/auth/mfa/setup', { password: 'not the password' }, access)).statusCode, 401, 'the password is checked');
+  res = await call('POST', '/v1/auth/mfa/setup', { password: GOOD_PASSWORD }, access);
   assert.equal(res.statusCode, 200);
   const { secret } = res.json();
   const { Totp } = await import('../src/crypto/totp.js');
   const now = (/** @type {number} */ d = 0) => Totp.code(secret, Math.floor(t.clock.now / 30_000) + d);
-  res = await call('POST', '/v1/auth/mfa/enable', { code: now() }, access);
+  res = await call('POST', '/v1/auth/mfa/enable', { password: GOOD_PASSWORD, code: now() }, access);
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().recoveryCodes.length, 10);
   res = await call('POST', '/v1/auth/login', { email, password: GOOD_PASSWORD });
@@ -271,8 +272,8 @@ test('Idempotency-Key: opt-in on admin create routes only; MFA secrets are never
   t.users.markVerified(first.json().user.id, Date.now());
   const login = await call('POST', '/v1/auth/login', body, { 'idempotency-key': 'login-idem-1' });
   const access = { 'x-access-token': login.json().tokens.accessToken, 'idempotency-key': 'mfa-setup-idem-1' };
-  const s1 = await call('POST', '/v1/auth/mfa/setup', undefined, access);
-  const s2 = await call('POST', '/v1/auth/mfa/setup', undefined, access);
+  const s1 = await call('POST', '/v1/auth/mfa/setup', { password: GOOD_PASSWORD }, access);
+  const s2 = await call('POST', '/v1/auth/mfa/setup', { password: GOOD_PASSWORD }, access);
   assert.equal(s1.statusCode, 200, s1.body);
   assert.notEqual(s1.json().secret, s2.json().secret, 'each setup returns a new secret, never a replay');
   assert.equal(s2.headers['idempotent-replayed'], undefined);

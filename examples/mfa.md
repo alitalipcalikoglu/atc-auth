@@ -2,12 +2,12 @@
 
 End users can protect their account with a TOTP app (Google Authenticator, 1Password, Authy, …) and ten one-time recovery codes. The server needs `MFA_SECRETS_KEY` (64 hex characters, `openssl rand -hex 32`); it seals every secret with AES-256-GCM. Without it the MFA routes answer `503 MFA_UNAVAILABLE`.
 
-The enrolment and management routes act for the signed-in user: your backend passes the user's access token in `X-Access-Token` next to its own API key, as for a password change.
+The enrolment and management routes act for the signed-in user: your backend passes the user's access token in `X-Access-Token` next to its own API key, as for a password change. Every one of them also takes the current password: an access token that leaked (a script on the page, a shared device) must not be enough to bind another authenticator or take the recovery codes. A wrong password or code counts toward the same lockout as a failed sign-in.
 
 ## Enrol
 
 ```bash
-authcurl -X POST $AUTH/v1/auth/mfa/setup -H "X-Access-Token: $ACCESS"
+authcurl -X POST $AUTH/v1/auth/mfa/setup -H "X-Access-Token: $ACCESS" -d '{"password":"correct horse battery staple"}'
 ```
 
 ```json
@@ -17,7 +17,7 @@ authcurl -X POST $AUTH/v1/auth/mfa/setup -H "X-Access-Token: $ACCESS"
 Render `otpauthUrl` as a QR code (and show `secret` for manual entry). MFA is still off. Confirm with the first code from the app:
 
 ```bash
-authcurl -X POST $AUTH/v1/auth/mfa/enable -H "X-Access-Token: $ACCESS" -d '{"code":"492039"}'
+authcurl -X POST $AUTH/v1/auth/mfa/enable -H "X-Access-Token: $ACCESS" -d '{"password":"correct horse battery staple","code":"492039"}'
 ```
 
 ```json
@@ -55,7 +55,7 @@ What to expect:
 ## New recovery codes, turning off
 
 ```bash
-authcurl -X POST $AUTH/v1/auth/mfa/recovery-codes -H "X-Access-Token: $ACCESS" -d '{"code":"118204"}'
+authcurl -X POST $AUTH/v1/auth/mfa/recovery-codes -H "X-Access-Token: $ACCESS" -d '{"password":"correct horse battery staple","code":"118204"}'
 authcurl -X POST $AUTH/v1/auth/mfa/disable -H "X-Access-Token: $ACCESS" -d '{"password":"correct horse battery staple","code":"K7Q2M-X9DPA"}'
 ```
 
